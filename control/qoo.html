@@ -1,0 +1,716 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>QoO Threshold Config</title>
+<style>
+  :root {
+    --bg: #f7f7f9;
+    --card: #ffffff;
+    --line: #d9dde3;
+    --text: #1d2430;
+    --muted: #5f6b7a;
+    --orange: #ff8c00;
+    --blue: #007bff;
+    --green: #28a745;
+  }
+  body { font-family: system-ui, sans-serif; max-width: 980px; margin: 1.5rem auto; padding: 0 1rem; color: var(--text); background: var(--bg); }
+  h1 { font-size: 1.35rem; margin: 0; }
+  p.sub { margin: 0.45rem 0 1rem; color: var(--muted); }
+  .links { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 1rem; }
+  .btn-link { display: inline-block; padding: 7px 12px; color: #fff; border-radius: 6px; text-decoration: none; font-weight: 700; font-size: 0.9rem; }
+  .btn-net { background: var(--blue); }
+  .btn-browser { background: var(--green); }
+  .btn-dash { background: #6c757d; }
+
+  .group { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 0.9rem 1rem; margin-bottom: 0.9rem; }
+  .group h2 { margin: 0 0 0.55rem; font-size: 1.05rem; }
+  .group-note { color: var(--muted); font-size: 0.85rem; margin: 0 0 0.7rem; }
+  .explain-box { background: #f5f8fd; border: 1px solid #d7e2f3; border-radius: 8px; padding: 0.6rem 0.7rem; margin: 0 0 0.7rem; font-size: 0.82rem; color: #334155; white-space: pre-line; }
+
+  .row { display: grid; grid-template-columns: 120px 1fr 100px; gap: 10px; align-items: center; margin-bottom: 0.55rem; }
+  .row .label { font-size: 0.88rem; color: #2f3a48; }
+  .slider-wrap { display: flex; align-items: center; gap: 10px; }
+  input[type="range"] { width: 100%; }
+  input[type="number"], select { width: 100%; padding: 6px; border: 1px solid var(--line); border-radius: 6px; background: #fff; box-sizing: border-box; }
+
+  .lat-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; gap: 10px; flex-wrap: wrap; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #bfc6d2; border-radius: 999px; padding: 4px 10px; background: #eef3fb; font-size: 0.86rem; }
+  .chip button { border: 0; background: transparent; color: #334155; cursor: pointer; font-size: 0.9rem; line-height: 1; padding: 0; }
+  .lat-add { display: flex; gap: 6px; align-items: center; }
+  .lat-grid { border-top: 1px dashed #d3d9e3; padding-top: 0.7rem; }
+  .lat-row { display: grid; grid-template-columns: 70px 1fr 1fr; gap: 10px; align-items: start; margin-bottom: 0.7rem; }
+  .lat-pill { display: inline-flex; align-items: center; justify-content: center; min-height: 32px; border-radius: 6px; background: #f0f3f9; border: 1px solid #d4dbe7; font-weight: 700; font-size: 0.86rem; }
+  .bound { border: 1px solid #dce2ec; border-radius: 8px; padding: 0.45rem 0.55rem; background: #fcfdff; }
+  .bound .title { font-size: 0.78rem; color: #5f6b7a; margin-bottom: 0.2rem; }
+
+  .actions { margin-top: 0.7rem; display: flex; gap: 8px; align-items: center; }
+  button.main { padding: 8px 13px; border: 0; border-radius: 6px; color: #fff; font-weight: 700; cursor: pointer; }
+  #save { background: var(--orange); }
+  #reload { background: #4f5b67; }
+  #status { font-size: 0.86rem; color: var(--muted); }
+  .profile-row { display: grid; grid-template-columns: 170px 1fr auto auto auto; gap: 8px; align-items: center; }
+  .profile-row label { font-size: 0.86rem; color: #2f3a48; }
+  .profile-actions { display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap; }
+  #profile-status { display: block; margin-top: 0.5rem; font-size: 0.83rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<h1>QoO Threshold Configuration</h1>
+<p class="sub">Persisted in gateway and applied automatically in dashboards.</p>
+
+<div class="links">
+  <a class="btn-link btn-dash" href="http://localhost:3000/d/qoo-overview/qoo-overview">Overview Dashboard</a>
+  <a class="btn-link btn-dash" href="http://localhost:3000/d/qoo-active-overview/qoo-active-overview">Active Overview Dashboard</a>
+  <a class="btn-link btn-dash" href="http://localhost:3000/d/qoo-passive-overview/qoo-passive-overview">Passive Overview Dashboard</a>
+  <a class="btn-link btn-dash" href="http://localhost:3000/d/qoo-comparison/qoo-comparison">QoO Comparison Dashboard</a>
+</div>
+
+<div class="explain-box"> Requirements for Optimal Performance (ROP):  The network performance characteristics at which an application achieves optimal performance.  When network performance exceeds ROP thresholds, any sub-optimal user experience can be assumed not to be caused by the part of the network path that has been measured for QoO calculations.
+
+Conditions at the Point of Unacceptable Performance (CPUP):  The network performance threshold below which an application fails to provide acceptable user experience.  Note that 'unacceptable' in this context refers to degraded performance quality rather than complete technical failure of the application.  There is no universally strict threshold defining when network conditions become unacceptable for applications.
+
+More details: <a href="https://datatracker.ietf.org/doc/draft-ietf-ippm-qoo/">QoO IETF Draft</a></div>
+
+<div class="group" id="latency-group">
+  <h2>Latency [ms]</h2>
+  <p class="group-note">Pick percentiles. Each row has ROP and CPUP bounds (must satisfy ROP &lt; CPUP).</p>
+  <div class="lat-head">
+    <div class="chips" id="latency-chips"></div>
+    <div class="lat-add">
+      <select id="latency-add-select">
+        <option value="p50">p50</option>
+        <option value="p75">p75</option>
+        <option value="p90">p90</option>
+        <option value="p95">p95</option>
+        <option value="p99">p99</option>
+      </select>
+      <button class="main" id="latency-add" type="button" style="background:#3f4f61;">Add Percentile</button>
+    </div>
+  </div>
+  <div class="lat-grid" id="latency-rows"></div>
+</div>
+
+<div class="group" id="loss-group">
+  <h2>Loss [%]</h2>
+  <div class="lat-row" id="loss-row">
+    <div></div>
+    <div class="bound" id="loss-rop"></div>
+    <div class="bound" id="loss-cpup"></div>
+  </div>
+</div>
+
+<div class="group" id="throughput-group">
+  <h2>Throughput [Mbps]</h2>
+  <div class="row" data-key="qooMinThroughputMbps" data-min="0" data-max="50" data-step="0.1" data-label="Minimum"></div>
+</div>
+
+<div class="group" id="profiles-group">
+  <h2>QoO Profiles</h2>
+  <div class="profile-row">
+    <label for="profile-name">Profile name</label>
+    <input id="profile-name" type="text" placeholder="e.g. video-call-custom" maxlength="64">
+    <button class="main" id="profile-save" type="button" style="background:#2b6cb0;">Save Profile</button>
+    <select id="profile-select"></select>
+    <button class="main" id="profile-load" type="button" style="background:#4a5568;">Load Profile</button>
+  </div>
+  <div class="profile-actions">
+    <button class="main" id="profile-reload-all" type="button" style="background:#3f4f61;">Reload All Profiles</button>
+    <button class="main" id="profile-import" type="button" style="background:#2f855a;">Import Profile</button>
+    <button class="main" id="profile-export" type="button" style="background:#2b6cb0;">Export Selected Profile</button>
+    <input id="profile-import-file" type="file" accept="application/json,.json" style="display:none;" />
+  </div>
+  <span id="profile-status"></span>
+</div>
+
+<div class="actions">
+  <button class="main" id="save" type="button">Save QoO Config</button>
+  <button class="main" id="reload" type="button">Reload</button>
+  <span id="status"></span>
+</div>
+
+<script>
+const API = 'http://localhost:9000/qoo-config';
+const PROFILE_API = 'http://localhost:9000/qoo-profiles';
+const ORDER = ['p50', 'p75', 'p90', 'p95', 'p99'];
+const LABEL_TO_KEYS = {
+  p50: { lower: 'qooLatencyP50Lower', upper: 'qooLatencyP50Upper' },
+  p75: { lower: 'qooLatencyP75Lower', upper: 'qooLatencyP75Upper' },
+  p90: { lower: 'qooLatencyP90Lower', upper: 'qooLatencyP90Upper' },
+  p95: { lower: 'qooLatencyP95Lower', upper: 'qooLatencyP95Upper' },
+  p99: { lower: 'qooLatencyP99Lower', upper: 'qooLatencyP99Upper' }
+};
+const defaults = {
+  qooMinThroughputMbps: 2,
+  qooLossLower: 0.001,
+  qooLossUpper: 0.02,
+  qooLatencyP50Lower: 50,
+  qooLatencyP50Upper: 150,
+  qooLatencyP75Lower: 75,
+  qooLatencyP75Upper: 175,
+  qooLatencyP90Lower: 90,
+  qooLatencyP90Upper: 190,
+  qooLatencyP95Lower: 100,
+  qooLatencyP95Upper: 200,
+  qooLatencyP99Lower: 150,
+  qooLatencyP99Upper: 300,
+  qooLatencyPercentiles: ['p50', 'p75', 'p90', 'p95', 'p99']
+};
+
+const statusEl = document.getElementById('status');
+const profileStatusEl = document.getElementById('profile-status');
+const chipsEl = document.getElementById('latency-chips');
+const rowsEl = document.getElementById('latency-rows');
+const addSelect = document.getElementById('latency-add-select');
+const profileSelectEl = document.getElementById('profile-select');
+const profileNameEl = document.getElementById('profile-name');
+
+let state = { ...defaults };
+
+function setStatus(msg, bad = false) {
+  statusEl.textContent = msg;
+  statusEl.style.color = bad ? '#b00020' : '#1f6f43';
+}
+
+function setProfileStatus(msg, bad = false) {
+  profileStatusEl.textContent = msg;
+  profileStatusEl.style.color = bad ? '#b00020' : '#1f6f43';
+}
+
+function numeric(val, fallback) {
+  const n = Number(val);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function enforceLatencyBounds(label) {
+  const keys = LABEL_TO_KEYS[label];
+  if (!keys) return;
+  const low = numeric(state[keys.lower], defaults[keys.lower]);
+  const up = numeric(state[keys.upper], defaults[keys.upper]);
+  if (low >= up) state[keys.upper] = low + 1;
+}
+
+function buildScalarRow(root) {
+  const key = root.dataset.key;
+  const min = numeric(root.dataset.min, 0);
+  const max = numeric(root.dataset.max, 100);
+  const step = numeric(root.dataset.step, 1);
+  const label = root.dataset.label || key;
+
+  root.innerHTML = '';
+  const l = document.createElement('div');
+  l.className = 'label';
+  l.textContent = label;
+
+  const sliderWrap = document.createElement('div');
+  sliderWrap.className = 'slider-wrap';
+  const slider = document.createElement('input');
+  slider.type = 'range';
+  slider.min = String(min);
+  slider.max = String(max);
+  slider.step = String(step);
+
+  const number = document.createElement('input');
+  number.type = 'number';
+  number.min = String(min);
+  number.max = String(max);
+  number.step = String(step);
+
+  const isLossKey = key === 'qooLossLower' || key === 'qooLossUpper';
+
+  function stateToUi(v) {
+    return isLossKey ? (v * 100) : v;
+  }
+
+  function uiToState(v) {
+    return isLossKey ? (v / 100) : v;
+  }
+
+  function sync(value) {
+    const fallbackUi = stateToUi(defaults[key]);
+    const clampedUi = Math.max(min, Math.min(max, numeric(value, fallbackUi)));
+    state[key] = uiToState(clampedUi);
+
+    if (isLossKey && state.qooLossLower >= state.qooLossUpper) {
+      state.qooLossUpper = state.qooLossLower + 0.0005;
+    }
+
+    const uiValue = stateToUi(state[key]);
+    slider.value = String(uiValue);
+    number.value = String(uiValue);
+
+    if (isLossKey) {
+      const otherKey = key === 'qooLossLower' ? 'qooLossUpper' : 'qooLossLower';
+      const otherRow = document.querySelector('.row[data-key="' + otherKey + '"]');
+      if (otherRow) {
+        const otherUi = stateToUi(state[otherKey]);
+        const otherSlider = otherRow.querySelector('input[type="range"]');
+        const otherNumber = otherRow.querySelector('input[type="number"]');
+        if (otherSlider) otherSlider.value = String(otherUi);
+        if (otherNumber) otherNumber.value = String(otherUi);
+      }
+    }
+  }
+
+  slider.addEventListener('input', () => sync(slider.value));
+  number.addEventListener('input', () => sync(number.value));
+
+  sync(state[key]);
+  sliderWrap.appendChild(slider);
+  root.appendChild(l);
+  root.appendChild(sliderWrap);
+  root.appendChild(number);
+}
+
+function buildLatencyBoundInput(container, label, side, min, max, step) {
+  const keys = LABEL_TO_KEYS[label];
+  const key = side === 'lower' ? keys.lower : keys.upper;
+  const title = document.createElement('div');
+  title.className = 'title';
+  title.textContent = side === 'lower' ? 'ROP' : 'CPUP';
+
+  const wrap = document.createElement('div');
+  wrap.className = 'slider-wrap';
+  const slider = document.createElement('input');
+  slider.type = 'range';
+  slider.min = String(min);
+  slider.max = String(max);
+  slider.step = String(step);
+
+  const number = document.createElement('input');
+  number.type = 'number';
+  number.min = String(min);
+  number.max = String(max);
+  number.step = String(step);
+
+  function sync(value, sourceSide) {
+    state[key] = numeric(value, defaults[key]);
+    enforceLatencyBounds(label);
+
+    slider.value = String(state[key]);
+    number.value = String(state[key]);
+
+    const otherKey = sourceSide === 'lower' ? keys.upper : keys.lower;
+    const otherInput = container.querySelector('input[data-key="' + otherKey + '"]');
+    if (otherInput) otherInput.value = String(state[otherKey]);
+
+    const otherSlider = container.querySelector('input[type="range"][data-key="' + otherKey + '"]');
+    if (otherSlider) otherSlider.value = String(state[otherKey]);
+  }
+
+  slider.dataset.key = key;
+  number.dataset.key = key;
+
+  slider.addEventListener('input', () => sync(slider.value, side));
+  number.addEventListener('input', () => sync(number.value, side));
+
+  slider.value = String(state[key]);
+  number.value = String(state[key]);
+
+  wrap.appendChild(slider);
+  container.appendChild(title);
+  container.appendChild(wrap);
+  container.appendChild(number);
+}
+
+function renderLatency() {
+  const selected = (state.qooLatencyPercentiles || []).slice().sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b));
+  state.qooLatencyPercentiles = selected;
+
+  chipsEl.innerHTML = '';
+  selected.forEach((label) => {
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    chip.innerHTML = '<span>' + label + '</span>';
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.textContent = 'x';
+    x.title = 'Remove ' + label;
+    x.addEventListener('click', () => {
+      if (state.qooLatencyPercentiles.length <= 1) {
+        setStatus('At least one percentile must remain.', true);
+        return;
+      }
+      state.qooLatencyPercentiles = state.qooLatencyPercentiles.filter((p) => p !== label);
+      renderLatency();
+      setStatus('');
+    });
+    chip.appendChild(x);
+    chipsEl.appendChild(chip);
+  });
+
+  const remaining = ORDER.filter((p) => !selected.includes(p));
+  addSelect.innerHTML = '';
+  remaining.forEach((p) => {
+    const opt = document.createElement('option');
+    opt.value = p;
+    opt.textContent = p;
+    addSelect.appendChild(opt);
+  });
+  document.getElementById('latency-add').disabled = remaining.length === 0;
+
+  rowsEl.innerHTML = '';
+  selected.forEach((label) => {
+    enforceLatencyBounds(label);
+    const row = document.createElement('div');
+    row.className = 'lat-row';
+
+    const pill = document.createElement('div');
+    pill.className = 'lat-pill';
+    pill.textContent = label;
+
+    const lower = document.createElement('div');
+    lower.className = 'bound';
+    const upper = document.createElement('div');
+    upper.className = 'bound';
+
+    buildLatencyBoundInput(lower, label, 'lower', 0, 1000, 1);
+    buildLatencyBoundInput(upper, label, 'upper', 1, 2000, 1);
+
+    row.appendChild(pill);
+    row.appendChild(lower);
+    row.appendChild(upper);
+    rowsEl.appendChild(row);
+  });
+}
+
+document.querySelectorAll('#throughput-group .row').forEach(buildScalarRow);
+
+document.getElementById('latency-add').addEventListener('click', () => {
+  const pick = addSelect.value;
+  if (!pick) return;
+  if (!state.qooLatencyPercentiles.includes(pick)) {
+    state.qooLatencyPercentiles.push(pick);
+    renderLatency();
+  }
+});
+
+function buildLossBoundInput(container, key, title) {
+  container.innerHTML = '';
+  const t = document.createElement('div');
+  t.className = 'title';
+  t.textContent = title;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'slider-wrap';
+  const slider = document.createElement('input');
+  slider.type = 'range';
+  slider.min = '0';
+  slider.max = '20';
+  slider.step = '0.05';
+
+  const number = document.createElement('input');
+  number.type = 'number';
+  number.min = '0';
+  number.max = '20';
+  number.step = '0.05';
+
+  function sync(uiValue) {
+    const ui = Math.max(0, Math.min(20, numeric(uiValue, (defaults[key] || 0) * 100)));
+    state[key] = ui / 100;
+    if (state.qooLossLower >= state.qooLossUpper) {
+      state.qooLossUpper = state.qooLossLower + 0.0005;
+    }
+
+    const own = key === 'qooLossLower' ? state.qooLossLower : state.qooLossUpper;
+    slider.value = String(own * 100);
+    number.value = String(own * 100);
+
+    const otherKey = key === 'qooLossLower' ? 'qooLossUpper' : 'qooLossLower';
+    const otherContainer = otherKey === 'qooLossLower'
+      ? document.getElementById('loss-rop')
+      : document.getElementById('loss-cpup');
+    if (otherContainer) {
+      const otherSlider = otherContainer.querySelector('input[type="range"]');
+      const otherNumber = otherContainer.querySelector('input[type="number"]');
+      const other = (state[otherKey] || 0) * 100;
+      if (otherSlider) otherSlider.value = String(other);
+      if (otherNumber) otherNumber.value = String(other);
+    }
+  }
+
+  slider.addEventListener('input', () => sync(slider.value));
+  number.addEventListener('input', () => sync(number.value));
+
+  slider.value = String((state[key] || 0) * 100);
+  number.value = String((state[key] || 0) * 100);
+
+  wrap.appendChild(slider);
+  container.appendChild(t);
+  container.appendChild(wrap);
+  container.appendChild(number);
+}
+
+function renderLoss() {
+  buildLossBoundInput(document.getElementById('loss-rop'), 'qooLossLower', 'ROP');
+  buildLossBoundInput(document.getElementById('loss-cpup'), 'qooLossUpper', 'CPUP');
+}
+
+async function load() {
+  setStatus('Loading...');
+  try {
+    const res = await fetch(API);
+    if (!res.ok) throw new Error(await res.text());
+    const cfg = await res.json();
+    state = {
+      ...defaults,
+      ...cfg,
+      qooLatencyPercentiles: Array.isArray(cfg.qooLatencyPercentiles) ? cfg.qooLatencyPercentiles : defaults.qooLatencyPercentiles
+    };
+
+    document.querySelectorAll('#throughput-group .row').forEach(buildScalarRow);
+    renderLoss();
+    renderLatency();
+    await refreshProfileList();
+    setStatus('Loaded.');
+  } catch (e) {
+    setStatus('Load failed: ' + e.message, true);
+  }
+}
+
+function buildPayloadFromState() {
+  const payload = {
+    qooMinThroughputMbps: numeric(state.qooMinThroughputMbps, defaults.qooMinThroughputMbps),
+    qooLossLower: numeric(state.qooLossLower, defaults.qooLossLower),
+    qooLossUpper: numeric(state.qooLossUpper, defaults.qooLossUpper),
+    qooLatencyP50Lower: numeric(state.qooLatencyP50Lower, defaults.qooLatencyP50Lower),
+    qooLatencyP50Upper: numeric(state.qooLatencyP50Upper, defaults.qooLatencyP50Upper),
+    qooLatencyP75Lower: numeric(state.qooLatencyP75Lower, defaults.qooLatencyP75Lower),
+    qooLatencyP75Upper: numeric(state.qooLatencyP75Upper, defaults.qooLatencyP75Upper),
+    qooLatencyP90Lower: numeric(state.qooLatencyP90Lower, defaults.qooLatencyP90Lower),
+    qooLatencyP90Upper: numeric(state.qooLatencyP90Upper, defaults.qooLatencyP90Upper),
+    qooLatencyP95Lower: numeric(state.qooLatencyP95Lower, defaults.qooLatencyP95Lower),
+    qooLatencyP95Upper: numeric(state.qooLatencyP95Upper, defaults.qooLatencyP95Upper),
+    qooLatencyP99Lower: numeric(state.qooLatencyP99Lower, defaults.qooLatencyP99Lower),
+    qooLatencyP99Upper: numeric(state.qooLatencyP99Upper, defaults.qooLatencyP99Upper),
+    qooLatencyPercentiles: state.qooLatencyPercentiles.slice().sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b))
+  };
+  payload.qooLatencyPercentiles.forEach((p) => enforceLatencyBounds(p));
+  return payload;
+}
+
+async function save() {
+  const payload = buildPayloadFromState();
+
+  setStatus('Saving...');
+  document.getElementById('save').disabled = true;
+  try {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const saved = await res.json();
+    state = { ...state, ...saved };
+    renderLoss();
+    renderLatency();
+    setStatus('Saved. Refresh dashboards to see updates.');
+  } catch (e) {
+    setStatus('Save failed: ' + e.message, true);
+  } finally {
+    document.getElementById('save').disabled = false;
+  }
+}
+
+async function refreshProfileList() {
+  try {
+    const res = await fetch(PROFILE_API);
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    const names = Array.isArray(data.profiles) ? data.profiles : [];
+
+    profileSelectEl.innerHTML = '';
+    if (names.length === 0) {
+      const o = document.createElement('option');
+      o.value = '';
+      o.textContent = '(no saved profiles)';
+      profileSelectEl.appendChild(o);
+      profileSelectEl.disabled = true;
+      return;
+    }
+    profileSelectEl.disabled = false;
+    names.forEach((name) => {
+      const o = document.createElement('option');
+      o.value = name;
+      o.textContent = name;
+      profileSelectEl.appendChild(o);
+    });
+  } catch (e) {
+    setProfileStatus('Profile list failed: ' + e.message, true);
+  }
+}
+
+async function saveProfile() {
+  const name = profileNameEl.value.trim();
+  if (!name) {
+    setProfileStatus('Enter a profile name first.', true);
+    return;
+  }
+
+  const payload = buildPayloadFromState();
+  setProfileStatus('Saving profile...');
+  document.getElementById('profile-save').disabled = true;
+  try {
+    let res = await fetch(PROFILE_API + '/' + encodeURIComponent(name), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (res.status === 409) {
+      const ok = window.confirm('Profile already exists. Overwrite?');
+      if (!ok) {
+        setProfileStatus('Save canceled (existing profile kept).');
+        return;
+      }
+      res = await fetch(PROFILE_API + '/' + encodeURIComponent(name) + '?overwrite=true', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    }
+    if (!res.ok) throw new Error(await res.text());
+    await refreshProfileList();
+    profileSelectEl.value = name;
+    setProfileStatus('Profile saved: ' + name);
+  } catch (e) {
+    setProfileStatus('Save profile failed: ' + e.message, true);
+  } finally {
+    document.getElementById('profile-save').disabled = false;
+  }
+}
+
+async function reloadAllProfiles() {
+  setProfileStatus('Reloading profiles from files...');
+  document.getElementById('profile-reload-all').disabled = true;
+  try {
+    const res = await fetch(PROFILE_API + '/reload', { method: 'POST' });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    await refreshProfileList();
+    setProfileStatus('Reloaded ' + (data.count || 0) + ' profile(s) from files.');
+  } catch (e) {
+    setProfileStatus('Reload failed: ' + e.message, true);
+  } finally {
+    document.getElementById('profile-reload-all').disabled = false;
+  }
+}
+
+function openImportPicker() {
+  const input = document.getElementById('profile-import-file');
+  input.value = '';
+  input.click();
+}
+
+async function importProfileFromFile(file) {
+  if (!file) return;
+  setProfileStatus('Importing profile...');
+  try {
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    const inferredName = (parsed && parsed.name) || file.name.replace(/\.json$/i, '');
+    const cfg = (parsed && parsed.config) ? parsed.config : parsed;
+    let res = await fetch(PROFILE_API + '/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: inferredName, config: cfg })
+    });
+    if (res.status === 409) {
+      const ok = window.confirm('Imported profile already exists. Overwrite?');
+      if (!ok) {
+        setProfileStatus('Import canceled (existing profile kept).');
+        return;
+      }
+      res = await fetch(PROFILE_API + '/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: inferredName, config: cfg, overwrite: true })
+      });
+    }
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    await refreshProfileList();
+    if (data.name) {
+      profileSelectEl.value = data.name;
+      profileNameEl.value = data.name;
+    }
+    setProfileStatus('Imported profile: ' + (data.name || inferredName));
+  } catch (e) {
+    setProfileStatus('Import failed: ' + e.message, true);
+  }
+}
+
+async function exportSelectedProfile() {
+  const name = profileSelectEl.value;
+  if (!name) {
+    setProfileStatus('Select a profile to export.', true);
+    return;
+  }
+  setProfileStatus('Exporting profile...');
+  try {
+    const res = await fetch(PROFILE_API + '/export/' + encodeURIComponent(name));
+    if (!res.ok) throw new Error(await res.text());
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name + '.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    setProfileStatus('Exported profile: ' + name);
+  } catch (e) {
+    setProfileStatus('Export failed: ' + e.message, true);
+  }
+}
+
+async function loadProfile() {
+  const name = profileSelectEl.value;
+  if (!name) {
+    setProfileStatus('Select a profile to load.', true);
+    return;
+  }
+  setProfileStatus('Loading profile...');
+  document.getElementById('profile-load').disabled = true;
+  try {
+    const res = await fetch(PROFILE_API + '/load/' + encodeURIComponent(name), {
+      method: 'POST'
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    state = {
+      ...defaults,
+      ...(data.config || {}),
+      qooLatencyPercentiles: Array.isArray(data.config?.qooLatencyPercentiles)
+        ? data.config.qooLatencyPercentiles
+        : defaults.qooLatencyPercentiles
+    };
+    document.querySelectorAll('#throughput-group .row').forEach(buildScalarRow);
+    renderLoss();
+    renderLatency();
+    setProfileStatus('Profile loaded: ' + name);
+    setStatus('Loaded profile into current QoO config. Save if you want to pin it now.');
+  } catch (e) {
+    setProfileStatus('Load profile failed: ' + e.message, true);
+  } finally {
+    document.getElementById('profile-load').disabled = false;
+  }
+}
+
+document.getElementById('save').addEventListener('click', save);
+document.getElementById('reload').addEventListener('click', load);
+document.getElementById('profile-save').addEventListener('click', saveProfile);
+document.getElementById('profile-load').addEventListener('click', loadProfile);
+document.getElementById('profile-reload-all').addEventListener('click', reloadAllProfiles);
+document.getElementById('profile-import').addEventListener('click', openImportPicker);
+document.getElementById('profile-export').addEventListener('click', exportSelectedProfile);
+document.getElementById('profile-import-file').addEventListener('change', (e) => {
+  const file = e.target.files && e.target.files[0];
+  importProfileFromFile(file);
+});
+load();
+</script>
+</body>
+</html>

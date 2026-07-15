@@ -1,0 +1,933 @@
+{
+  "id": null,
+  "uid": "qoo-active-overview",
+  "title": "QoO Active Overview",
+  "tags": [
+    "qoo",
+    "active"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 100,
+  "refresh": "5s",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 104,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "h": 2,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "html",
+        "content": "<div style=\"display:flex;align-items:center;justify-content:space-between;gap:12px;padding-left:8px;padding-right:8px;overflow-x:auto;\">\n  <div style=\"display:flex;gap:8px;align-items:center;flex-wrap:nowrap;white-space:nowrap;\">\n    <a href=\"http://localhost:8080\" target=\"_blank\" style=\"display:inline-block;padding:6px 10px;background:#007bff;color:#fff;border-radius:4px;text-decoration:none;font-weight:600;\">Configure Network</a>\n    <a href=\"http://localhost:5800\" target=\"_blank\" style=\"display:inline-block;padding:6px 10px;background:#28a745;color:#fff;border-radius:4px;text-decoration:none;font-weight:600;\">Open Browser Docker</a>\n    <a href=\"http://localhost:8080/qoo.html\" target=\"_blank\" style=\"display:inline-block;padding:6px 10px;background:#ff8c00;color:#fff;border-radius:4px;text-decoration:none;font-weight:600;\">Configure QoO</a>\n    <a href=\"/d/qoo-passive-overview/qoo-passive-overview\" style=\"display:inline-block;padding:6px 10px;background:#6c757d;color:#fff;border-radius:4px;text-decoration:none;font-weight:600;\">Passive</a>\n    <a href=\"/d/qoo-overview/qoo-overview\" style=\"display:inline-block;padding:6px 10px;background:#6c757d;color:#fff;border-radius:4px;text-decoration:none;font-weight:600;\">Overall</a>\n    <a href=\"/d/qoo-comparison/qoo-comparison\" style=\"display:inline-block;padding:6px 10px;background:#6c757d;color:#fff;border-radius:4px;text-decoration:none;font-weight:600;\">QoO Comparison</a>\n  </div>\n</div>"
+      },
+      "transparent": true
+    },
+    {
+      "id": 105,
+      "type": "row",
+      "title": "Active profile",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 2
+      }
+    },
+    {
+      "id": 5,
+      "type": "state-timeline",
+      "title": "Active profile over time",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 3
+      },
+      "options": {
+        "mergeValues": true,
+        "showValue": "auto",
+        "rowHeight": 0.9,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_active_profile\" and r._field == \"value\")\n  |> map(fn: (r) => ({_time: r._time, _value: r.profile, lane: \"Profile\"}))\n  |> keep(columns: [\"_time\", \"_value\", \"lane\"])\n  |> group(columns: [\"lane\"])",
+          "refId": "A"
+        }
+      ],
+      "description": "Timeline showing which impairment profile was active at each point in time."
+    },
+    {
+      "id": 101,
+      "type": "row",
+      "title": "Active - bandwidth measurement (active-probe: ping + iperf3)",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "RTT (avg)",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 21
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "points",
+            "lineWidth": 0,
+            "pointSize": 6
+          },
+          "displayName": "${__field.labels.label}"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_rtt_ms\" and r._field == \"value\")\n  |> filter(fn: (r) => r.mode == \"active\" and r.bandwidth == \"true\")\n  |> map(fn: (r) => ({r with label: \"Ping (#\" + (if exists r.run then r.run else \"?\") + \")\"}))\n  |> group(columns: [\"label\"])\n  |> keep(columns: [\"_time\", \"_value\", \"label\"])",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Loss",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 21
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "drawStyle": "points",
+            "pointSize": 6,
+            "lineWidth": 0
+          },
+          "displayName": "${__field.labels.label}"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_loss_ratio\" and r._field == \"value\")\n  |> filter(fn: (r) => r.mode == \"active\" and r.bandwidth == \"true\")\n  |> map(fn: (r) => ({r with label: \"Ping (#\" + (if exists r.run then r.run else \"?\") + \")\"}))\n  |> group(columns: [\"label\"])\n  |> keep(columns: [\"_time\", \"_value\", \"label\"])",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Throughput",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 21
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Mbits",
+          "custom": {
+            "drawStyle": "points",
+            "lineWidth": 0,
+            "pointSize": 6
+          },
+          "displayName": "${__field.labels.label}"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_throughput_mbps\" and r._field == \"value\")\n  |> filter(fn: (r) => r.mode == \"active\" and r.bandwidth == \"true\")\n  |> map(fn: (r) => ({r with label: \"Iperf (#\" + (if exists r.run then r.run else \"?\") + \")\"}))\n  |> group(columns: [\"label\"])\n  |> keep(columns: [\"_time\", \"_value\", \"label\"])",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "RTT - individual ping samples (all runs)",
+      "description": "One point per ping reply (icmp_seq) from every run-active-probes.sh run, not just the batch average.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 29
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "points",
+            "pointSize": 9,
+            "lineWidth": 0
+          },
+          "displayName": "${__field.labels.label}"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_ping_sample_rtt_ms\" and r._field == \"value\")\n  |> filter(fn: (r) => r.mode == \"active\" and r.bandwidth == \"true\")\n  |> map(fn: (r) => ({r with label: \"Ping (#\" + (if exists r.run then r.run else \"?\") + \")\"}))\n  |> group(columns: [\"label\"])\n  |> keep(columns: [\"_time\", \"_value\", \"label\"])",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Throughput - individual iperf3 intervals (all runs)",
+      "description": "One point per iperf3 -J interval (sum.bits_per_second), not just the -t-second test's single overall average.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 29
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Mbits",
+          "custom": {
+            "drawStyle": "points",
+            "lineWidth": 0,
+            "pointSize": 9
+          },
+          "displayName": "${__field.labels.label}"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_throughput_sample_mbps\" and r._field == \"value\")\n  |> filter(fn: (r) => r.mode == \"active\" and r.bandwidth == \"true\")\n  |> map(fn: (r) => ({r with label: \"Iperf (#\" + (if exists r.run then r.run else \"?\") + \")\"}))\n  |> group(columns: [\"label\"])\n  |> keep(columns: [\"_time\", \"_value\", \"label\"])",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 102,
+      "type": "row",
+      "title": "Active - no bandwidth measurement (godash)",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 38
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "RTT",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 39
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "points",
+            "lineWidth": 0,
+            "pointSize": 6
+          },
+          "displayName": "${__field.labels.label}"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_rtt_ms\" and r._field == \"value\")\n  |> filter(fn: (r) => r.mode == \"active\" and r.bandwidth == \"false\")\n  |> map(fn: (r) => ({r with label: \"Godash \" + (if r.flow == \"godash-quic\" then \"QUIC\" else \"TCP\") + \" (#\" + r.run + \")\"}))\n  |> group(columns: [\"label\"])\n  |> keep(columns: [\"_time\", \"_value\", \"label\"])",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Loss",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 39
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "drawStyle": "points",
+            "lineWidth": 0,
+            "pointSize": 6
+          },
+          "displayName": "${__field.labels.label}"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_loss_ratio\" and r._field == \"value\")\n  |> filter(fn: (r) => r.mode == \"active\" and r.bandwidth == \"false\")\n  |> map(fn: (r) => ({r with label: \"Godash \" + (if r.flow == \"godash-quic\" then \"QUIC\" else \"TCP\") + \" (#\" + r.run + \")\"}))\n  |> group(columns: [\"label\"])\n  |> keep(columns: [\"_time\", \"_value\", \"label\"])",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "TTLB (segment fetch time - no raw bandwidth number available)",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 39
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "points",
+            "lineWidth": 0,
+            "pointSize": 6
+          },
+          "displayName": "${__field.labels.label}"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_ttlb_ms\" and r._field == \"value\")\n  |> filter(fn: (r) => r.mode == \"active\" and r.bandwidth == \"false\")\n  |> map(fn: (r) => ({r with label: \"Godash \" + (if r.flow == \"godash-quic\" then \"QUIC\" else \"TCP\") + \" (#\" + r.run + \")\"}))\n  |> group(columns: [\"label\"])\n  |> keep(columns: [\"_time\", \"_value\", \"label\"])",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 206,
+      "type": "row",
+      "title": "QoO score (active sources)",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 11
+      }
+    },
+    {
+      "id": 214,
+      "type": "stat",
+      "title": "QoO score (active sources)",
+      "description": "Continuous min() score across active data sources (ping, iperf3, godash).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 12
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "max": 100,
+          "color": {
+            "mode": "continuous-RdYlGr"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "import \"strings\"\nsel = ${sources:json}\nenabledPercentiles = strings.split(v: \"${qooSelLatencyPercentilesCsv}\", t: \",\")\nrollingWindow = duration(v: \"${qooRollingWindow}\")\n\npassiveOn = contains(value: \"passive\", set: sel)\npingOn = contains(value: \"active-ping\", set: sel)\niperfOn = contains(value: \"active-iperf3\", set: sel)\ngodashOn = contains(value: \"active-godash\", set: sel)\n\ncomponentScore = (measured, lower, upper) => {\n  m = 1.0 - (measured - lower) / (upper - lower)\n  clamped = if m < 0.0 then 0.0 else if m > 1.0 then 1.0 else m\n  return clamped * 100.0\n}\n\nlatencyBase = union(tables: [\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_rtt_ms\" and r._field == \"value\" and r.mode == \"passive\")\n    |> filter(fn: (r) => passiveOn)\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_ping_sample_rtt_ms\" and r._field == \"value\")\n    |> filter(fn: (r) => pingOn)\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_rtt_ms\" and r._field == \"value\" and r.mode == \"active\" and r.bandwidth == \"false\")\n    |> filter(fn: (r) => godashOn)\n    |> keep(columns: [\"_time\", \"_value\"])\n])\n\nmkLatency = (q, lower, upper, label) =>\n  latencyBase\n    |> window(every: 5s, period: rollingWindow)\n    |> quantile(q: q, method: \"exact_selector\")\n    |> duplicate(column: \"_stop\", as: \"_time\")\n    |> window(every: inf)\n    |> keep(columns: [\"_time\", \"_value\"])\n    |> map(fn: (r) => ({_time: r._time, _value: componentScore(measured: r._value, lower: lower, upper: upper), label: label}))\n\nlatencyRowsAll = union(tables: [\n  mkLatency(q: 0.50, lower: float(v: ${qooSelLatencyP50Lower}), upper: float(v: ${qooSelLatencyP50Upper}), label: \"Latency P50 QoO\"),\n  mkLatency(q: 0.95, lower: float(v: ${qooSelLatencyP95Lower}), upper: float(v: ${qooSelLatencyP95Upper}), label: \"Latency P95 QoO\"),\n  mkLatency(q: 0.99, lower: float(v: ${qooSelLatencyP99Lower}), upper: float(v: ${qooSelLatencyP99Upper}), label: \"Latency P99 QoO\")\n])\n\nlatencyRows = latencyRowsAll\n  |> filter(fn: (r) =>\n    (r.label == \"Latency P50 QoO\" and contains(value: \"p50\", set: enabledPercentiles)) or\n    (r.label == \"Latency P95 QoO\" and contains(value: \"p95\", set: enabledPercentiles)) or\n    (r.label == \"Latency P99 QoO\" and contains(value: \"p99\", set: enabledPercentiles))\n  )\n\nlossBase = union(tables: [\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_loss_ratio\" and r.mode == \"passive\")\n    |> filter(fn: (r) => passiveOn)\n    |> pivot(rowKey: [\"_time\", \"flow\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n    |> filter(fn: (r) => r.packets >= 0.0)\n    |> rename(columns: {value: \"_value\"})\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_loss_ratio\" and r._field == \"value\" and r.mode == \"active\" and r.bandwidth == \"true\")\n    |> filter(fn: (r) => pingOn)\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_loss_ratio\" and r._field == \"value\" and r.mode == \"active\" and r.bandwidth == \"false\")\n    |> filter(fn: (r) => godashOn)\n    |> keep(columns: [\"_time\", \"_value\"])\n])\n\nlossRow = lossBase\n  |> window(every: 5s, period: rollingWindow)\n  |> mean()\n  |> duplicate(column: \"_stop\", as: \"_time\")\n  |> window(every: inf)\n  |> keep(columns: [\"_time\", \"_value\"])\n  |> map(fn: (r) => ({_time: r._time, _value: componentScore(measured: r._value, lower: float(v: ${qooSelLossLower}), upper: float(v: ${qooSelLossUpper})), label: \"Loss QoO\"}))\n\nthroughputBase = union(tables: [\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_throughput_mbps\" and r.mode == \"passive\")\n    |> filter(fn: (r) => passiveOn)\n    |> pivot(rowKey: [\"_time\", \"flow\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n    |> filter(fn: (r) => r.value >= 0.0 and r.packets >= 0.0)\n    |> rename(columns: {value: \"_value\"})\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_throughput_mbps\" and r._field == \"value\" and r.mode == \"active\" and r.bandwidth == \"true\")\n    |> filter(fn: (r) => iperfOn)\n    |> keep(columns: [\"_time\", \"_value\"])\n])\n\nthroughputRow = throughputBase\n  |> window(every: 5s, period: rollingWindow)\n  |> min()\n  |> duplicate(column: \"_stop\", as: \"_time\")\n  |> window(every: inf)\n  |> keep(columns: [\"_time\", \"_value\"])\n  |> map(fn: (r) => ({_time: r._time, _value: if r._value >= float(v: ${qooSelMinThroughputMbps}) then 100.0 else 0.0, label: \"Throughput QoO\"}))\n\ncomponentRows = union(tables: [latencyRows, lossRow, throughputRow])\n\noverallRow = componentRows\n  |> group(columns: [\"_time\"])\n  |> min(column: \"_value\")\n  |> map(fn: (r) => ({_time: r._time, _value: r._value, label: \"Overall QoO\"}))\n\noverallRow\n  |> keep(columns: [\"_time\", \"_value\"])\n  |> group()\n  |> sort(columns: [\"_time\"])\n  |> last()",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 215,
+      "type": "timeseries",
+      "title": "QoO score breakdown by component",
+      "description": "5s cadence; each point uses the previous ${qooRollingWindow} window. Includes overall QoO (min of components).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 10,
+        "x": 8,
+        "y": 12
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "max": 100,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "spanNulls": true,
+            "pointSize": 2,
+            "showPoints": "never"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Overall QoO"
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 3
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#111111"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "import \"strings\"\nsel = ${sources:json}\nenabledPercentiles = strings.split(v: \"${qooSelLatencyPercentilesCsv}\", t: \",\")\nrollingWindow = duration(v: \"${qooRollingWindow}\")\n\npassiveOn = contains(value: \"passive\", set: sel)\npingOn = contains(value: \"active-ping\", set: sel)\niperfOn = contains(value: \"active-iperf3\", set: sel)\ngodashOn = contains(value: \"active-godash\", set: sel)\n\ncomponentScore = (measured, lower, upper) => {\n  m = 1.0 - (measured - lower) / (upper - lower)\n  clamped = if m < 0.0 then 0.0 else if m > 1.0 then 1.0 else m\n  return clamped * 100.0\n}\n\nlatencyBase = union(tables: [\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_rtt_ms\" and r._field == \"value\" and r.mode == \"passive\")\n    |> filter(fn: (r) => passiveOn)\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_ping_sample_rtt_ms\" and r._field == \"value\")\n    |> filter(fn: (r) => pingOn)\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_rtt_ms\" and r._field == \"value\" and r.mode == \"active\" and r.bandwidth == \"false\")\n    |> filter(fn: (r) => godashOn)\n    |> keep(columns: [\"_time\", \"_value\"])\n])\n\nmkLatency = (q, lower, upper, label) =>\n  latencyBase\n    |> window(every: 5s, period: rollingWindow)\n    |> quantile(q: q, method: \"exact_selector\")\n    |> duplicate(column: \"_stop\", as: \"_time\")\n    |> window(every: inf)\n    |> keep(columns: [\"_time\", \"_value\"])\n    |> map(fn: (r) => ({_time: r._time, _value: componentScore(measured: r._value, lower: lower, upper: upper), label: label}))\n\nlatencyRowsAll = union(tables: [\n  mkLatency(q: 0.50, lower: float(v: ${qooSelLatencyP50Lower}), upper: float(v: ${qooSelLatencyP50Upper}), label: \"Latency P50 QoO\"),\n  mkLatency(q: 0.95, lower: float(v: ${qooSelLatencyP95Lower}), upper: float(v: ${qooSelLatencyP95Upper}), label: \"Latency P95 QoO\"),\n  mkLatency(q: 0.99, lower: float(v: ${qooSelLatencyP99Lower}), upper: float(v: ${qooSelLatencyP99Upper}), label: \"Latency P99 QoO\")\n])\n\nlatencyRows = latencyRowsAll\n  |> filter(fn: (r) =>\n    (r.label == \"Latency P50 QoO\" and contains(value: \"p50\", set: enabledPercentiles)) or\n    (r.label == \"Latency P95 QoO\" and contains(value: \"p95\", set: enabledPercentiles)) or\n    (r.label == \"Latency P99 QoO\" and contains(value: \"p99\", set: enabledPercentiles))\n  )\n\nlossBase = union(tables: [\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_loss_ratio\" and r.mode == \"passive\")\n    |> filter(fn: (r) => passiveOn)\n    |> pivot(rowKey: [\"_time\", \"flow\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n    |> filter(fn: (r) => r.packets >= 0.0)\n    |> rename(columns: {value: \"_value\"})\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_loss_ratio\" and r._field == \"value\" and r.mode == \"active\" and r.bandwidth == \"true\")\n    |> filter(fn: (r) => pingOn)\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_loss_ratio\" and r._field == \"value\" and r.mode == \"active\" and r.bandwidth == \"false\")\n    |> filter(fn: (r) => godashOn)\n    |> keep(columns: [\"_time\", \"_value\"])\n])\n\nlossRow = lossBase\n  |> window(every: 5s, period: rollingWindow)\n  |> mean()\n  |> duplicate(column: \"_stop\", as: \"_time\")\n  |> window(every: inf)\n  |> keep(columns: [\"_time\", \"_value\"])\n  |> map(fn: (r) => ({_time: r._time, _value: componentScore(measured: r._value, lower: float(v: ${qooSelLossLower}), upper: float(v: ${qooSelLossUpper})), label: \"Loss QoO\"}))\n\nthroughputBase = union(tables: [\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_throughput_mbps\" and r.mode == \"passive\")\n    |> filter(fn: (r) => passiveOn)\n    |> pivot(rowKey: [\"_time\", \"flow\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n    |> filter(fn: (r) => r.value >= 0.0 and r.packets >= 0.0)\n    |> rename(columns: {value: \"_value\"})\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_throughput_mbps\" and r._field == \"value\" and r.mode == \"active\" and r.bandwidth == \"true\")\n    |> filter(fn: (r) => iperfOn)\n    |> keep(columns: [\"_time\", \"_value\"])\n])\n\nthroughputRow = throughputBase\n  |> window(every: 5s, period: rollingWindow)\n  |> min()\n  |> duplicate(column: \"_stop\", as: \"_time\")\n  |> window(every: inf)\n  |> keep(columns: [\"_time\", \"_value\"])\n  |> map(fn: (r) => ({_time: r._time, _value: if r._value >= float(v: ${qooSelMinThroughputMbps}) then 100.0 else 0.0, label: \"Throughput QoO\"}))\n\ncomponentRows = union(tables: [latencyRows, lossRow, throughputRow])\n\noverallRow = componentRows\n  |> group(columns: [\"_time\"])\n  |> min(column: \"_value\")\n  |> map(fn: (r) => ({_time: r._time, _value: r._value, label: \"Overall QoO\"}))\n\nunion(tables: [componentRows, overallRow])\n  |> map(fn: (r) => ({_time: r._time, _value: r._value, _field: r.label}))\n  |> group(columns: [\"_field\"])\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 216,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 12
+      },
+      "options": {
+        "mode": "html",
+        "content": "<div style=\"height:100%;overflow:auto;padding:8px 10px;font-family:system-ui,sans-serif;line-height:1.25;\"><div style=\"font-size:12px;color:#6c757d;margin-bottom:4px;\">Selected QoO Profile</div><div style=\"font-size:16px;font-weight:700;margin-bottom:6px;\">${qooProfile}</div><div style=\"font-size:12px;color:#6c757d;margin-bottom:6px;\">Active: <span style=\"color:#111;font-weight:600;\">${qooActiveProfile}</span></div><div style=\"font-size:12px;font-weight:700;margin:4px 0 2px 0;\">Latency</div><div style=\"font-size:11px;\">P50: CPUP ${qooSelLatencyP50Lower}, ROP ${qooSelLatencyP50Upper}</div><div style=\"font-size:11px;\">P95: CPUP ${qooSelLatencyP95Lower}, ROP ${qooSelLatencyP95Upper}</div><div style=\"font-size:11px;\">P99: CPUP ${qooSelLatencyP99Lower}, ROP ${qooSelLatencyP99Upper}</div><div style=\"font-size:12px;font-weight:700;margin:6px 0 2px 0;\">Loss</div><div style=\"font-size:11px;\">CPUP ${qooSelLossLower}, ROP ${qooSelLossUpper}</div><div style=\"font-size:12px;font-weight:700;margin:6px 0 2px 0;\">Minimum Bandwidth</div><div style=\"font-size:11px;\">${qooSelMinThroughputMbps} Mbps</div></div>"
+      },
+      "transparent": false
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "qooActiveProfile",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb"
+        },
+        "refresh": 2,
+        "hide": 2,
+        "query": "from(bucket: \"qoo\")\n  |> range(start: -3650d)\n  |> filter(fn: (r) => r._measurement == \"qoo_config\" and r._field == \"qooActiveProfile\")\n  |> last()\n  |> keep(columns: [\"_value\"])"
+      },
+      {
+        "name": "qooSelLatencyPercentilesCsv",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb"
+        },
+        "refresh": 2,
+        "hide": 2,
+        "query": "from(bucket: \"qoo\")\n  |> range(start: -3650d)\n  |> filter(fn: (r) => r._measurement == \"qoo_config_profile\" and r.name == \"${qooProfile}\" and r._field == \"qooLatencyPercentilesCsv\")\n  |> last()\n  |> keep(columns: [\"_value\"])"
+      },
+      {
+        "name": "qooSelLatencyP99Upper",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb"
+        },
+        "refresh": 2,
+        "hide": 2,
+        "query": "from(bucket: \"qoo\")\n  |> range(start: -3650d)\n  |> filter(fn: (r) => r._measurement == \"qoo_config_profile\" and r.name == \"${qooProfile}\" and r._field == \"qooLatencyP99Upper\")\n  |> last()\n  |> keep(columns: [\"_value\"])"
+      },
+      {
+        "name": "qooSelLatencyP99Lower",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb"
+        },
+        "refresh": 2,
+        "hide": 2,
+        "query": "from(bucket: \"qoo\")\n  |> range(start: -3650d)\n  |> filter(fn: (r) => r._measurement == \"qoo_config_profile\" and r.name == \"${qooProfile}\" and r._field == \"qooLatencyP99Lower\")\n  |> last()\n  |> keep(columns: [\"_value\"])"
+      },
+      {
+        "name": "qooSelLatencyP95Upper",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb"
+        },
+        "refresh": 2,
+        "hide": 2,
+        "query": "from(bucket: \"qoo\")\n  |> range(start: -3650d)\n  |> filter(fn: (r) => r._measurement == \"qoo_config_profile\" and r.name == \"${qooProfile}\" and r._field == \"qooLatencyP95Upper\")\n  |> last()\n  |> keep(columns: [\"_value\"])"
+      },
+      {
+        "name": "qooSelLatencyP95Lower",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb"
+        },
+        "refresh": 2,
+        "hide": 2,
+        "query": "from(bucket: \"qoo\")\n  |> range(start: -3650d)\n  |> filter(fn: (r) => r._measurement == \"qoo_config_profile\" and r.name == \"${qooProfile}\" and r._field == \"qooLatencyP95Lower\")\n  |> last()\n  |> keep(columns: [\"_value\"])"
+      },
+      {
+        "name": "qooSelLatencyP50Upper",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb"
+        },
+        "refresh": 2,
+        "hide": 2,
+        "query": "from(bucket: \"qoo\")\n  |> range(start: -3650d)\n  |> filter(fn: (r) => r._measurement == \"qoo_config_profile\" and r.name == \"${qooProfile}\" and r._field == \"qooLatencyP50Upper\")\n  |> last()\n  |> keep(columns: [\"_value\"])"
+      },
+      {
+        "name": "qooSelLatencyP50Lower",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb"
+        },
+        "refresh": 2,
+        "hide": 2,
+        "query": "from(bucket: \"qoo\")\n  |> range(start: -3650d)\n  |> filter(fn: (r) => r._measurement == \"qoo_config_profile\" and r.name == \"${qooProfile}\" and r._field == \"qooLatencyP50Lower\")\n  |> last()\n  |> keep(columns: [\"_value\"])"
+      },
+      {
+        "name": "qooSelLossUpper",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb"
+        },
+        "refresh": 2,
+        "hide": 2,
+        "query": "from(bucket: \"qoo\")\n  |> range(start: -3650d)\n  |> filter(fn: (r) => r._measurement == \"qoo_config_profile\" and r.name == \"${qooProfile}\" and r._field == \"qooLossUpper\")\n  |> last()\n  |> keep(columns: [\"_value\"])"
+      },
+      {
+        "name": "qooSelLossLower",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb"
+        },
+        "refresh": 2,
+        "hide": 2,
+        "query": "from(bucket: \"qoo\")\n  |> range(start: -3650d)\n  |> filter(fn: (r) => r._measurement == \"qoo_config_profile\" and r.name == \"${qooProfile}\" and r._field == \"qooLossLower\")\n  |> last()\n  |> keep(columns: [\"_value\"])"
+      },
+      {
+        "name": "qooSelMinThroughputMbps",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb"
+        },
+        "refresh": 2,
+        "hide": 2,
+        "query": "from(bucket: \"qoo\")\n  |> range(start: -3650d)\n  |> filter(fn: (r) => r._measurement == \"qoo_config_profile\" and r.name == \"${qooProfile}\" and r._field == \"qooMinThroughputMbps\")\n  |> last()\n  |> keep(columns: [\"_value\"])"
+      },
+      {
+        "name": "qooProfile",
+        "type": "query",
+        "label": "QoO profile",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb"
+        },
+        "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"qoo\", tag: \"name\", predicate: (r) => r._measurement == \"qoo_config_profile\")",
+        "refresh": 2,
+        "includeAll": false,
+        "multi": false
+      },
+      {
+        "name": "qooRollingWindow",
+        "type": "custom",
+        "label": "QoO rolling window",
+        "multi": false,
+        "includeAll": false,
+        "query": "1m,2m,5m,10m,15m",
+        "current": {
+          "text": "5m",
+          "value": "5m"
+        },
+        "options": [
+          {
+            "text": "1m",
+            "value": "1m",
+            "selected": false
+          },
+          {
+            "text": "2m",
+            "value": "2m",
+            "selected": false
+          },
+          {
+            "text": "5m",
+            "value": "5m",
+            "selected": true
+          },
+          {
+            "text": "10m",
+            "value": "10m",
+            "selected": false
+          },
+          {
+            "text": "15m",
+            "value": "15m",
+            "selected": false
+          }
+        ]
+      },
+      {
+        "name": "sources",
+        "type": "custom",
+        "label": "QoO score data sources",
+        "multi": true,
+        "includeAll": false,
+        "query": "active-ping : active-ping,active-iperf3 : active-iperf3,active-godash : active-godash",
+        "current": {
+          "text": [
+            "active-ping",
+            "active-iperf3",
+            "active-godash"
+          ],
+          "value": [
+            "active-ping",
+            "active-iperf3",
+            "active-godash"
+          ]
+        },
+        "options": [
+          {
+            "text": "active-ping",
+            "value": "active-ping",
+            "selected": true
+          },
+          {
+            "text": "active-iperf3",
+            "value": "active-iperf3",
+            "selected": true
+          },
+          {
+            "text": "active-godash",
+            "value": "active-godash",
+            "selected": true
+          }
+        ]
+      },
+      {
+        "name": "qooMinThroughputMbps",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb"
+        },
+        "refresh": 2,
+        "hide": 2,
+        "query": "from(bucket: \"qoo\")\n  |> range(start: -365d)\n  |> filter(fn: (r) => r._measurement == \"qoo_config\" and r._field == \"qooMinThroughputMbps\")\n  |> last()\n  |> keep(columns: [\"_value\"])"
+      },
+      {
+        "name": "qooLossLower",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb"
+        },
+        "refresh": 2,
+        "hide": 2,
+        "query": "from(bucket: \"qoo\")\n  |> range(start: -365d)\n  |> filter(fn: (r) => r._measurement == \"qoo_config\" and r._field == \"qooLossLower\")\n  |> last()\n  |> keep(columns: [\"_value\"])"
+      },
+      {
+        "name": "qooLossUpper",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb"
+        },
+        "refresh": 2,
+        "hide": 2,
+        "query": "from(bucket: \"qoo\")\n  |> range(start: -365d)\n  |> filter(fn: (r) => r._measurement == \"qoo_config\" and r._field == \"qooLossUpper\")\n  |> last()\n  |> keep(columns: [\"_value\"])"
+      },
+      {
+        "name": "qooLatencyP50Lower",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb"
+        },
+        "refresh": 2,
+        "hide": 2,
+        "query": "from(bucket: \"qoo\")\n  |> range(start: -365d)\n  |> filter(fn: (r) => r._measurement == \"qoo_config\" and r._field == \"qooLatencyP50Lower\")\n  |> last()\n  |> keep(columns: [\"_value\"])"
+      },
+      {
+        "name": "qooLatencyP50Upper",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb"
+        },
+        "refresh": 2,
+        "hide": 2,
+        "query": "from(bucket: \"qoo\")\n  |> range(start: -365d)\n  |> filter(fn: (r) => r._measurement == \"qoo_config\" and r._field == \"qooLatencyP50Upper\")\n  |> last()\n  |> keep(columns: [\"_value\"])"
+      },
+      {
+        "name": "qooLatencyP95Lower",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb"
+        },
+        "refresh": 2,
+        "hide": 2,
+        "query": "from(bucket: \"qoo\")\n  |> range(start: -365d)\n  |> filter(fn: (r) => r._measurement == \"qoo_config\" and r._field == \"qooLatencyP95Lower\")\n  |> last()\n  |> keep(columns: [\"_value\"])"
+      },
+      {
+        "name": "qooLatencyP95Upper",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb"
+        },
+        "refresh": 2,
+        "hide": 2,
+        "query": "from(bucket: \"qoo\")\n  |> range(start: -365d)\n  |> filter(fn: (r) => r._measurement == \"qoo_config\" and r._field == \"qooLatencyP95Upper\")\n  |> last()\n  |> keep(columns: [\"_value\"])"
+      },
+      {
+        "name": "qooLatencyP99Lower",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb"
+        },
+        "refresh": 2,
+        "hide": 2,
+        "query": "from(bucket: \"qoo\")\n  |> range(start: -365d)\n  |> filter(fn: (r) => r._measurement == \"qoo_config\" and r._field == \"qooLatencyP99Lower\")\n  |> last()\n  |> keep(columns: [\"_value\"])"
+      },
+      {
+        "name": "qooLatencyP99Upper",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb"
+        },
+        "refresh": 2,
+        "hide": 2,
+        "query": "from(bucket: \"qoo\")\n  |> range(start: -365d)\n  |> filter(fn: (r) => r._measurement == \"qoo_config\" and r._field == \"qooLatencyP99Upper\")\n  |> last()\n  |> keep(columns: [\"_value\"])"
+      },
+      {
+        "name": "qooLatencyPercentilesCsv",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb"
+        },
+        "refresh": 2,
+        "hide": 2,
+        "query": "from(bucket: \"qoo\")\n  |> range(start: -365d)\n  |> filter(fn: (r) => r._measurement == \"qoo_config\" and r._field == \"qooLatencyPercentilesCsv\")\n  |> last()\n  |> keep(columns: [\"_value\"])"
+      },
+      {
+        "name": "qooLatencyP75Lower",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb"
+        },
+        "refresh": 2,
+        "hide": 2,
+        "query": "from(bucket: \"qoo\")\n  |> range(start: -365d)\n  |> filter(fn: (r) => r._measurement == \"qoo_config\" and r._field == \"qooLatencyP75Lower\")\n  |> last()\n  |> keep(columns: [\"_value\"])"
+      },
+      {
+        "name": "qooLatencyP75Upper",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb"
+        },
+        "refresh": 2,
+        "hide": 2,
+        "query": "from(bucket: \"qoo\")\n  |> range(start: -365d)\n  |> filter(fn: (r) => r._measurement == \"qoo_config\" and r._field == \"qooLatencyP75Upper\")\n  |> last()\n  |> keep(columns: [\"_value\"])"
+      },
+      {
+        "name": "qooLatencyP90Lower",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb"
+        },
+        "refresh": 2,
+        "hide": 2,
+        "query": "from(bucket: \"qoo\")\n  |> range(start: -365d)\n  |> filter(fn: (r) => r._measurement == \"qoo_config\" and r._field == \"qooLatencyP90Lower\")\n  |> last()\n  |> keep(columns: [\"_value\"])"
+      },
+      {
+        "name": "qooLatencyP90Upper",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb"
+        },
+        "refresh": 2,
+        "hide": 2,
+        "query": "from(bucket: \"qoo\")\n  |> range(start: -365d)\n  |> filter(fn: (r) => r._measurement == \"qoo_config\" and r._field == \"qooLatencyP90Upper\")\n  |> last()\n  |> keep(columns: [\"_value\"])"
+      }
+    ]
+  }
+}

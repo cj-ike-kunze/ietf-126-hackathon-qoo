@@ -1,0 +1,169 @@
+networks:
+  lan-net:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
+  wan-net:
+    ipam:
+      config:
+        - subnet: 172.29.0.0/24
+
+# All measurement data (pcap captures, InfluxDB TSDB, Grafana state,
+# WireGuard keys) is bind-mounted into ./data/ so it's directly browsable
+# on the host, not hidden inside Docker-managed volumes. godash's own
+# files/logs are already host-native (it runs as a plain binary, not
+# containerized) - see applications/qoo-godash/files/ and logs/.
+
+services:
+  gateway:
+    build: ./gateway
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.ip_forward=1
+    environment:
+      # WireGuard tunnel for hosts that can't route into Docker bridge
+      # networks (macOS Docker Desktop) — off by default, zero effect on
+      # Linux hosts using setup-routing.sh directly. See
+      # scripts/setup-mac-wireguard.sh and CHEATSHEET.md.
+      WG_ENABLE: "${WG_ENABLE:-false}"
+      WG_PEER_PUBLIC_KEY: "${WG_PEER_PUBLIC_KEY:-}"
+      QOO_CONFIG_PATH: /pcap/qoo-config.json
+      QOO_PROFILES_DIR: /qoo-profiles
+      CORS_ALLOWED_ORIGINS: "http://localhost:8080,http://127.0.0.1:8080,http://localhost:3000,http://127.0.0.1:3000"
+      INFLUX_URL: http://influxdb:8086
+      INFLUX_ORG: qoo
+      INFLUX_BUCKET: qoo
+      INFLUX_TOKEN: qoo-dev-token
+    networks:
+      lan-net:
+        ipv4_address: 172.28.0.10
+      wan-net:
+        ipv4_address: 172.29.0.10
+    volumes:
+      - ./data/pcap:/pcap
+      - ./profiles:/qoo-profiles
+      - ./data/wg-keys:/etc/wireguard
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:51820:51820/udp"
+    restart: unless-stopped
+
+  target:
+    build: ./target
+    networks:
+      wan-net:
+        ipv4_address: 172.29.0.20
+    # published directly so target is reachable without host-OS routing —
+    # useful for testing godash/QUIC on hosts where routing through the
+    # gateway isn't set up (e.g. Docker Desktop on macOS can't route the
+    # host into the container bridge at all — see CHEATSHEET.md). Traffic
+    # via these published ports bypasses gateway impairment entirely; for
+    # the real demo, use setup-routing.sh + the gateway-routed IP instead.
+    ports:
+      - "127.0.0.1:18000:8000"
+      - "127.0.0.1:14433:4433/udp"
+    restart: unless-stopped
+
+  # collector writes its qoo_* points directly to InfluxDB line protocol
+  # (see collector/influx_writer.go).
+  collector:
+    build: ./collector
+    environment:
+      GATEWAY_STATUS_URL: http://gateway:9000/status
+      GATEWAY_BASE_URL: http://gateway:9000
+      APP_CATEGORY: video-call
+      INFLUX_URL: http://influxdb:8086
+      INFLUX_ORG: qoo
+      INFLUX_BUCKET: qoo
+      INFLUX_TOKEN: qoo-dev-token
+    networks:
+      - lan-net
+    volumes:
+      - ./data/pcap:/pcap:ro
+    depends_on:
+      - gateway
+      - influxdb
+    restart: unless-stopped
+
+  # InfluxDB is the single metrics sink for qoo_* sources
+  # (collector, scripts/run-active-probes.sh, scripts/push-godash-metrics.sh
+  # via scripts/lib-push-metrics.sh). Writers use the HTTP line-protocol
+  # API with per-point timestamps.
+  # DOCKER_INFLUXDB_INIT_* auto-provisions org/bucket/token on first boot
+  # (persisted in ./data/influxdb, so this only runs once).
+  influxdb:
+    image: influxdb:2.7
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: adminadmin
+      DOCKER_INFLUXDB_INIT_ORG: qoo
+      DOCKER_INFLUXDB_INIT_BUCKET: qoo
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: qoo-dev-token
+    networks:
+      - lan-net
+    volumes:
+      - ./data/influxdb:/var/lib/influxdb2
+    ports:
+      - "127.0.0.1:8086:8086"
+    restart: unless-stopped
+
+  dashboard:
+    build: ./dashboard
+    networks:
+      - lan-net
+    volumes:
+      - ./data/grafana:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - influxdb
+    restart: unless-stopped
+
+  control:
+    build: ./control
+    networks:
+      - lan-net
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      - gateway
+    restart: unless-stopped
+
+  browser:
+    build: ./browser
+    shm_size: "2gb"
+    cap_add:
+      - NET_ADMIN
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      TZ: "UTC"
+    networks:
+      lan-net:
+        ipv4_address: 172.28.0.30
+    volumes:
+      - browser-config:/config
+    ports:
+      - "127.0.0.1:5800:3000"
+    depends_on:
+      - gateway
+    # Keep host/control-plane paths local (e.g. noVNC on :5800) while still
+    # routing internet-bound browser traffic through gateway netem.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        ORIG_GW="$$(ip route show default | awk 'NR==1{print $$3}')"
+        if [ -n "$$ORIG_GW" ]; then
+          ip route replace 10.0.0.0/8 via "$$ORIG_GW" dev eth0 || true
+          ip route replace 172.16.0.0/12 via "$$ORIG_GW" dev eth0 || true
+          ip route replace 192.168.0.0/16 via "$$ORIG_GW" dev eth0 || true
+        fi
+        ip route replace default via 172.28.0.10 dev eth0
+        exec /init
+    restart: unless-stopped
+
+volumes:
+  browser-config:

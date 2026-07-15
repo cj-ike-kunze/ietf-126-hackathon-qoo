@@ -1,0 +1,17 @@
+apiVersion: 1
+
+datasources:
+  - name: InfluxDB
+    uid: influxdb
+    type: influxdb
+    access: proxy
+    url: http://influxdb:8086
+    jsonData:
+      version: Flux
+      organization: qoo
+      defaultBucket: qoo
+      httpHeaderName1: Authorization
+    secureJsonData:
+      httpHeaderValue1: Token qoo-dev-token
+    isDefault: true
+    editable: false

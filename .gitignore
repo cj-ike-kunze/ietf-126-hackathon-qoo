@@ -1,0 +1,8 @@
+.clinerules/
+.cursor/
+.github/
+.claude/
+.vscode/
+.opencode
+data/*
+.wg-mac/

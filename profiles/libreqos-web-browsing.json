@@ -1,0 +1,8 @@
+{
+  "qooMinThroughputMbps": 2.0,
+  "qooLossLower": 0.005,
+  "qooLossUpper": 0.025,
+  "qooLatencyP95Lower": 60.0,
+  "qooLatencyP95Upper": 180.0,
+  "qooLatencyPercentiles": ["p95"]
+}

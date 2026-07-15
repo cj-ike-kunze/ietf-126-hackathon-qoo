@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>QoO Control Panel</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.3rem; }
+  h2 { font-size: 1.05rem; margin-top: 2rem; }
+  #status { padding: 0.75rem 1rem; border-radius: 6px; background: #eee; margin-bottom: 1.5rem; }
+  #status.err { background: #fdd; }
+  #fetch-config-btn { margin-bottom: 0.5rem; }
+  #config-result { background: #f5f5f5; border: 1px solid #ddd; border-radius: 6px; padding: 0.75rem 1rem; font-size: 0.85rem; white-space: pre-wrap; word-break: break-word; display: none; margin-bottom: 1.5rem; }
+  #profiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
+  button { padding: 0.6rem; border: 1px solid #ccc; border-radius: 6px; background: #fff; cursor: pointer; font-size: 0.95rem; }
+  button:hover { background: #f0f0f0; }
+  button.active { background: #2b7; color: #fff; border-color: #2b7; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  #experiment { margin-top: 2rem; display: flex; gap: 0.5rem; }
+  #experiment input { flex: 1; padding: 0.5rem; }
+  #experiment-result { font-size: 0.85rem; color: #666; margin-top: 0.4rem; }
+
+  .custom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem 2rem; }
+  .custom-grid.full { grid-template-columns: 1fr; }
+  .field { margin-bottom: 0.9rem; }
+  .field label { display: flex; justify-content: space-between; font-size: 0.85rem; color: #333; margin-bottom: 0.25rem; }
+  .field .val { font-variant-numeric: tabular-nums; color: #666; }
+  .field input[type="range"] { width: 100%; }
+  .field select { width: 100%; padding: 0.3rem; }
+  fieldset { border: 1px solid #ddd; border-radius: 6px; padding: 0.75rem 1rem 0.25rem; margin-bottom: 1rem; }
+  legend { font-size: 0.8rem; color: #666; padding: 0 0.4rem; }
+  #apply-custom { margin-top: 0.5rem; background: #2b7; color: #fff; border-color: #2b7; font-weight: 600; }
+  #clear-shaping { margin-top: 0.5rem; margin-left: 0.5rem; background: #d33; color: #fff; border-color: #d33; font-weight: 600; }
+  #custom-result { font-size: 0.85rem; color: #666; margin-top: 0.5rem; min-height: 1.2em; }
+  .hint { font-size: 0.78rem; color: #888; margin: -0.4rem 0 0.8rem; }
+</style>
+</head>
+<body>
+<h1>QoO Impairment Control</h1>
+<div id="status">loading status...</div>
+<button id="fetch-config-btn">Fetch deployed configuration</button>
+<pre id="config-result"></pre>
+<div id="profiles"></div>
+
+<h2>Custom shaping</h2>
+<p class="hint">Latency/jitter are round-trip values, split symmetrically across both directions
+(so a plain ping shows exactly the value you set). Loss and bandwidth are one-directional —
+set downstream and upstream independently. Applies on "Apply custom".</p>
+
+<fieldset>
+<legend>Latency</legend>
+<div class="custom-grid">
+  <div class="field">
+    <label>Round-trip delay <span class="val" id="delay_ms-val">0 ms</span></label>
+    <input type="range" id="delay_ms" min="0" max="5000" step="5" value="0">
+  </div>
+  <div class="field">
+    <label>Jitter <span class="val" id="jitter_ms-val">0 ms</span></label>
+    <input type="range" id="jitter_ms" min="0" max="200" step="1" value="0">
+  </div>
+</div>
+<div class="field">
+  <label>Distribution</label>
+  <select id="distribution">
+    <option value="normal">Normal</option>
+    <option value="uniform">Uniform</option>
+  </select>
+</div>
+</fieldset>
+
+<fieldset>
+<legend>Loss (one-directional)</legend>
+<div class="custom-grid">
+  <div class="field">
+    <label>Downstream loss <span class="val" id="downstream_loss_pct-val">0 %</span></label>
+    <input type="range" id="downstream_loss_pct" min="0" max="20" step="0.1" value="0">
+  </div>
+  <div class="field">
+    <label>Upstream loss <span class="val" id="upstream_loss_pct-val">0 %</span></label>
+    <input type="range" id="upstream_loss_pct" min="0" max="20" step="0.1" value="0">
+  </div>
+</div>
+<div class="field">
+  <label>Loss model</label>
+  <select id="loss_model">
+    <option value="uniform">Uniform</option>
+    <option value="burst">Burst (Gilbert model)</option>
+  </select>
+</div>
+</fieldset>
+
+<fieldset>
+<legend>Bandwidth (one-directional, 0 = unlimited)</legend>
+<div class="custom-grid">
+  <div class="field">
+    <label>Downstream <span class="val" id="downstream_rate_mbit-val">unlimited</span></label>
+    <input type="range" id="downstream_rate_mbit" min="0" max="100" step="0.5" value="0">
+  </div>
+  <div class="field">
+    <label>Upstream <span class="val" id="upstream_rate_mbit-val">unlimited</span></label>
+    <input type="range" id="upstream_rate_mbit" min="0" max="100" step="0.5" value="0">
+  </div>
+</div>
+</fieldset>
+
+<button id="apply-custom">Apply custom</button>
+<button id="clear-shaping">Clear all shaping</button>
+<div id="custom-result"></div>
+
+<div id="experiment">
+  <input id="experiment-label" type="text" placeholder="Experiment label (optional)">
+  <button id="experiment-btn">Annotate run</button>
+</div>
+<div id="experiment-result"></div>
+
+<script>
+const GATEWAY_URL = window.GATEWAY_URL || "http://localhost:9000";
+const GRAFANA_URL = window.GRAFANA_URL || "http://localhost:3000";
+
+const statusEl = document.getElementById("status");
+const profilesEl = document.getElementById("profiles");
+
+let currentProfile = null;
+
+function renderButtons(profiles) {
+  profilesEl.innerHTML = "";
+  profiles.forEach((name) => {
+    const btn = document.createElement("button");
+    btn.textContent = name;
+    btn.dataset.profile = name;
+    btn.addEventListener("click", () => switchProfile(name));
+    profilesEl.appendChild(btn);
+  });
+  highlightActive();
+}
+
+function highlightActive() {
+  document.querySelectorAll("#profiles button").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.profile === currentProfile);
+  });
+}
+
+async function loadProfiles() {
+  const res = await fetch(`${GATEWAY_URL}/profiles`);
+  const data = await res.json();
+  renderButtons(data.profiles);
+}
+
+async function refreshStatus() {
+  try {
+    const res = await fetch(`${GATEWAY_URL}/status`);
+    const data = await res.json();
+    currentProfile = data.active_profile;
+    statusEl.textContent = `Active profile: ${data.active_profile}`;
+    statusEl.classList.remove("err");
+    highlightActive();
+  } catch (err) {
+    statusEl.textContent = `Cannot reach gateway at ${GATEWAY_URL}`;
+    statusEl.classList.add("err");
+  }
+}
+
+async function switchProfile(name) {
+  document.querySelectorAll("#profiles button").forEach((b) => (b.disabled = true));
+  try {
+    const res = await fetch(`${GATEWAY_URL}/profile/${encodeURIComponent(name)}`, { method: "POST" });
+    if (!res.ok) throw new Error(await res.text());
+    await refreshStatus();
+  } catch (err) {
+    statusEl.textContent = `Failed to switch profile: ${err.message}`;
+    statusEl.classList.add("err");
+  } finally {
+    document.querySelectorAll("#profiles button").forEach((b) => (b.disabled = false));
+  }
+}
+
+document.getElementById("fetch-config-btn").addEventListener("click", async () => {
+  const configEl = document.getElementById("config-result");
+  configEl.style.display = "block";
+  configEl.textContent = "Fetching...";
+  try {
+    // /deployed-config reads tc qdisc state directly off the gateway's
+    // interfaces - the actually-applied shaping, not just whatever this
+    // page (or the gateway's own in-memory state) last thinks it set.
+    const res = await fetch(`${GATEWAY_URL}/deployed-config`);
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    configEl.textContent = JSON.stringify(data, null, 2);
+
+    SLIDER_IDS.forEach((id) => {
+      if (!(id in data)) return;
+      const slider = document.getElementById(id);
+      slider.value = data[id];
+      slider.dispatchEvent(new Event("input"));
+    });
+    document.getElementById("distribution").value = data.distribution;
+    document.getElementById("loss_model").value = data.loss_model;
+  } catch (err) {
+    configEl.textContent = `Failed to fetch configuration: ${err.message}`;
+  }
+});
+
+// --- Custom shaping sliders ---
+
+const SLIDER_IDS = [
+  "delay_ms", "jitter_ms",
+  "downstream_loss_pct", "upstream_loss_pct",
+  "downstream_rate_mbit", "upstream_rate_mbit",
+];
+
+function formatSliderValue(id, value) {
+  if (id.endsWith("_rate_mbit")) return value > 0 ? `${value} Mbit/s` : "unlimited";
+  if (id.endsWith("_loss_pct")) return `${value} %`;
+  if (id.endsWith("_ms")) return `${value} ms`;
+  return value;
+}
+
+SLIDER_IDS.forEach((id) => {
+  const slider = document.getElementById(id);
+  const label = document.getElementById(`${id}-val`);
+  const update = () => { label.textContent = formatSliderValue(id, slider.value); };
+  slider.addEventListener("input", update);
+  update();
+});
+
+document.getElementById("apply-custom").addEventListener("click", async () => {
+  const btn = document.getElementById("apply-custom");
+  const resultEl = document.getElementById("custom-result");
+  const body = {
+    delay_ms: Number(document.getElementById("delay_ms").value),
+    jitter_ms: Number(document.getElementById("jitter_ms").value),
+    distribution: document.getElementById("distribution").value,
+    downstream_loss_pct: Number(document.getElementById("downstream_loss_pct").value),
+    upstream_loss_pct: Number(document.getElementById("upstream_loss_pct").value),
+    loss_model: document.getElementById("loss_model").value,
+    downstream_rate_mbit: Number(document.getElementById("downstream_rate_mbit").value),
+    upstream_rate_mbit: Number(document.getElementById("upstream_rate_mbit").value),
+  };
+
+  btn.disabled = true;
+  resultEl.textContent = "Applying...";
+  try {
+    const res = await fetch(`${GATEWAY_URL}/custom`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+    resultEl.textContent = "Applied.";
+    await refreshStatus();
+  } catch (err) {
+    resultEl.textContent = `Failed: ${err.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+document.getElementById("clear-shaping").addEventListener("click", async () => {
+  const btn = document.getElementById("clear-shaping");
+  const resultEl = document.getElementById("custom-result");
+  btn.disabled = true;
+  resultEl.textContent = "Clearing...";
+  try {
+    // baseline.sh resets every shaped interface (LAN + WAN) to plain
+    // pfifo_fast - the same "no impairment" state /custom would need
+    // delay_ms=0/jitter_ms=0/loss=0/rate=0 to express, but as one call
+    // instead of round-tripping the whole slider form.
+    const res = await fetch(`${GATEWAY_URL}/profile/baseline`, { method: "POST" });
+    if (!res.ok) throw new Error(await res.text());
+    SLIDER_IDS.forEach((id) => {
+      const slider = document.getElementById(id);
+      slider.value = 0;
+      slider.dispatchEvent(new Event("input"));
+    });
+    document.getElementById("distribution").value = "normal";
+    document.getElementById("loss_model").value = "uniform";
+    resultEl.textContent = "Cleared - all shaping removed.";
+    await refreshStatus();
+  } catch (err) {
+    resultEl.textContent = `Failed to clear shaping: ${err.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// Best-effort: creates a Grafana annotation marking this point in time, so
+// runs can be visually correlated on the dashboards. Not critical path —
+// requires Grafana anonymous access (enabled in dashboard/Dockerfile).
+document.getElementById("experiment-btn").addEventListener("click", async () => {
+  const label = document.getElementById("experiment-label").value.trim() || currentProfile || "experiment";
+  const resultEl = document.getElementById("experiment-result");
+  try {
+    const res = await fetch(`${GRAFANA_URL}/api/annotations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: label,
+        tags: ["experiment", currentProfile].filter(Boolean),
+        time: Date.now(),
+      }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    resultEl.textContent = `Annotated: "${label}"`;
+  } catch (err) {
+    resultEl.textContent = `Annotation failed (non-critical): ${err.message}`;
+  }
+});
+
+loadProfiles();
+refreshStatus();
+setInterval(refreshStatus, 3000);
+</script>
+</body>
+</html>
