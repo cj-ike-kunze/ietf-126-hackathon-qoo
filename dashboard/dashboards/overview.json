@@ -681,6 +681,175 @@
         "content": "<div style=\"height:100%;overflow:auto;padding:8px 10px;font-family:system-ui,sans-serif;line-height:1.25;\"><div style=\"font-size:12px;color:#6c757d;margin-bottom:4px;\">Selected QoO Profile</div><div style=\"font-size:16px;font-weight:700;margin-bottom:6px;\">${qooProfile}</div><div style=\"font-size:12px;color:#6c757d;margin-bottom:6px;\">Active: <span style=\"color:#111;font-weight:600;\">${qooActiveProfile}</span></div><div style=\"font-size:12px;font-weight:700;margin:4px 0 2px 0;\">Latency</div><div style=\"font-size:11px;\">P50: CPUP ${qooSelLatencyP50Lower}, ROP ${qooSelLatencyP50Upper}</div><div style=\"font-size:11px;\">P95: CPUP ${qooSelLatencyP95Lower}, ROP ${qooSelLatencyP95Upper}</div><div style=\"font-size:11px;\">P99: CPUP ${qooSelLatencyP99Lower}, ROP ${qooSelLatencyP99Upper}</div><div style=\"font-size:12px;font-weight:700;margin:6px 0 2px 0;\">Loss</div><div style=\"font-size:11px;\">CPUP ${qooSelLossLower}, ROP ${qooSelLossUpper}</div><div style=\"font-size:12px;font-weight:700;margin:6px 0 2px 0;\">Minimum Bandwidth</div><div style=\"font-size:11px;\">${qooSelMinThroughputMbps} Mbps</div></div>"
       },
       "transparent": false
+    },
+    {
+      "id": 120,
+      "type": "row",
+      "title": "Active - LibreQoS CLI",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 63
+      }
+    },
+    {
+      "id": 121,
+      "type": "state-timeline",
+      "title": "LibreQoS phase timeline",
+      "description": "Current and historical LibreQoS test phase state.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 0,
+        "y": 64
+      },
+      "options": {
+        "mergeValues": true,
+        "showValue": "auto",
+        "rowHeight": 0.9,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_libreqos_phase\" and r._field == \"value\")\n  |> map(fn: (r) => ({_time: r._time, _value: r._value, lane: \"LibreQoS phase\"}))\n  |> keep(columns: [\"_time\", \"_value\", \"lane\"])\n  |> group(columns: [\"lane\"])",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 122,
+      "type": "timeseries",
+      "title": "LibreQoS RTT",
+      "description": "Latency samples from LibreQoS CLI latencySamples.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 6,
+        "y": 64
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "points",
+            "lineWidth": 0,
+            "pointSize": 6
+          },
+          "displayName": "${__field.labels.label}"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_libreqos_rtt_ms\" and r._field == \"value\")\n  |> filter(fn: (r) => r.mode == \"active\" and r.source == \"libreqos\")\n  |> map(fn: (r) => ({r with label: \"LibreQoS (#\" + (if exists r.run then r.run else \"?\") + \")\"}))\n  |> group(columns: [\"label\"])\n  |> keep(columns: [\"_time\", \"_value\", \"label\"])",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 123,
+      "type": "timeseries",
+      "title": "LibreQoS throughput (download)",
+      "description": "Throughput samples from LibreQoS CLI throughputSamples where direction=download.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 64
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Mbits",
+          "custom": {
+            "drawStyle": "points",
+            "lineWidth": 0,
+            "pointSize": 6
+          },
+          "displayName": "${__field.labels.label}"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_libreqos_throughput_mbps\" and r._field == \"value\")\n  |> filter(fn: (r) => r.mode == \"active\" and r.source == \"libreqos\" and r.direction == \"download\")\n  |> map(fn: (r) => ({r with label: \"Download (#\" + (if exists r.run then r.run else \"?\") + \")\"}))\n  |> group(columns: [\"label\"])\n  |> keep(columns: [\"_time\", \"_value\", \"label\"])",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 124,
+      "type": "timeseries",
+      "title": "LibreQoS throughput (upload)",
+      "description": "Throughput samples from LibreQoS CLI throughputSamples where direction=upload.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 64
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Mbits",
+          "custom": {
+            "drawStyle": "points",
+            "lineWidth": 0,
+            "pointSize": 6
+          },
+          "displayName": "${__field.labels.label}"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_libreqos_throughput_mbps\" and r._field == \"value\")\n  |> filter(fn: (r) => r.mode == \"active\" and r.source == \"libreqos\" and r.direction == \"upload\")\n  |> map(fn: (r) => ({r with label: \"Upload (#\" + (if exists r.run then r.run else \"?\") + \")\"}))\n  |> group(columns: [\"label\"])\n  |> keep(columns: [\"_time\", \"_value\", \"label\"])",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "templating": {
