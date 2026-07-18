@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WebRTC Receiver</title>
+  <style>
+    body {
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 20px;
+      background: #0b1220;
+      color: #e5e7eb;
+    }
+    h1 { margin-top: 0; }
+    .row { margin: 10px 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    input, button {
+      font-size: 14px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: 1px solid #334155;
+      background: #111827;
+      color: #e5e7eb;
+    }
+    button { cursor: pointer; }
+    video {
+      width: min(960px, 100%);
+      border-radius: 10px;
+      border: 1px solid #334155;
+      background: black;
+    }
+    pre {
+      white-space: pre-wrap;
+      background: #111827;
+      border: 1px solid #334155;
+      padding: 10px;
+      border-radius: 8px;
+      max-width: 960px;
+      max-height: 260px;
+      overflow: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>WebRTC Receiver</h1>
+  <div class="row">
+    <label for="session">Session</label>
+    <input id="session" value="demo" />
+    <button id="connectBtn">Connect</button>
+    <button id="disconnectBtn" disabled>Disconnect</button>
+    <button id="recordBtn" disabled>Start Recording</button>
+    <button id="stopRecordBtn" disabled>Stop Recording</button>
+  </div>
+  <div class="row">
+    <video id="remoteVideo" autoplay playsinline controls muted></video>
+  </div>
+  <pre id="log"></pre>
+
+  <script>
+    const apiBase = `${location.protocol}//${location.hostname}:9000`;
+    const logEl = document.getElementById('log');
+    const sessionEl = document.getElementById('session');
+    const remoteVideo = document.getElementById('remoteVideo');
+    const connectBtn = document.getElementById('connectBtn');
+    const disconnectBtn = document.getElementById('disconnectBtn');
+    const recordBtn = document.getElementById('recordBtn');
+    const stopRecordBtn = document.getElementById('stopRecordBtn');
+
+    let pc = null;
+    let statsTimer = null;
+    let recorder = null;
+    let recordedChunks = [];
+    let activeSession = null;
+    let currentConfig = null;
+    let remoteCandidateTimer = null;
+    let remoteCandidateIndex = 0;
+    let flowDebugTimer = null;
+
+    function log(msg) {
+      logEl.textContent += `${new Date().toISOString()} ${msg}\n`;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    async function apiGet(path) {
+      const resp = await fetch(`${apiBase}${path}`);
+      if (!resp.ok) throw new Error(`GET ${path} failed ${resp.status}`);
+      return await resp.json();
+    }
+
+    async function apiPost(path, body) {
+      const resp = await fetch(`${apiBase}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {}),
+      });
+      if (!resp.ok) throw new Error(`POST ${path} failed ${resp.status}`);
+      return await resp.json();
+    }
+
+    function pickInbound(stats) {
+      let inbound = null;
+      stats.forEach((r) => {
+        if (r.type === 'inbound-rtp' && r.kind === 'video' && !r.isRemote) inbound = r;
+      });
+      return inbound;
+    }
+
+    function pickRemote(stats, inbound) {
+      if (!inbound || !inbound.remoteId) return null;
+      return stats.get(inbound.remoteId) || null;
+    }
+
+    async function pushStats() {
+      if (!pc || !activeSession) return;
+      const stats = await pc.getStats();
+      const inbound = pickInbound(stats);
+      const remote = pickRemote(stats, inbound);
+      let selectedPair = null;
+      let localCand = null;
+      let remoteCand = null;
+
+      stats.forEach((r) => {
+        if (r.type === 'candidate-pair' && r.state === 'succeeded' && (r.nominated || r.selected)) {
+          selectedPair = r;
+        }
+      });
+
+      const payload = {
+        session: activeSession,
+        timestamp_ms: Date.now(),
+      };
+
+      if (remote && typeof remote.roundTripTime === 'number') payload.rtt_ms = remote.roundTripTime * 1000;
+      if (payload.rtt_ms === undefined && selectedPair && typeof selectedPair.currentRoundTripTime === 'number') {
+        payload.rtt_ms = selectedPair.currentRoundTripTime * 1000;
+      }
+      if (inbound && typeof inbound.jitter === 'number') payload.jitter_ms = inbound.jitter * 1000;
+      if (inbound && typeof inbound.packetsLost === 'number') payload.packets_lost = inbound.packetsLost;
+      if (inbound && typeof inbound.packetsReceived === 'number') payload.packets_received = inbound.packetsReceived;
+      if (inbound && typeof inbound.framesPerSecond === 'number') payload.frame_rate_fps = inbound.framesPerSecond;
+      if (inbound && typeof inbound.frameWidth === 'number') payload.resolution_width = inbound.frameWidth;
+      if (inbound && typeof inbound.frameHeight === 'number') payload.resolution_height = inbound.frameHeight;
+      if (inbound && typeof inbound.freezeCount === 'number') payload.freeze_count = inbound.freezeCount;
+
+      if (inbound && typeof inbound.bytesReceived === 'number') {
+        const now = performance.now();
+        const prev = pushStats._prev || null;
+        if (prev && now > prev.t) {
+          const bits = (inbound.bytesReceived - prev.bytes) * 8;
+          const seconds = (now - prev.t) / 1000;
+          if (seconds > 0 && bits >= 0) payload.bitrate_bps = bits / seconds;
+        }
+        pushStats._prev = { t: now, bytes: inbound.bytesReceived };
+        payload.bytes_received = inbound.bytesReceived;
+      }
+
+      if (inbound) {
+        log(`flow rx bytes=${inbound.bytesReceived || 0} packets=${inbound.packetsReceived || 0} framesDecoded=${inbound.framesDecoded || 0} fps=${inbound.framesPerSecond || 0}`);
+      }
+
+      if (selectedPair) {
+        localCand = stats.get(selectedPair.localCandidateId) || null;
+        remoteCand = stats.get(selectedPair.remoteCandidateId) || null;
+        log(`pair selected local=${localCand ? localCand.candidateType : 'na'} remote=${remoteCand ? remoteCand.candidateType : 'na'} rtt=${selectedPair.currentRoundTripTime || 0}`);
+      } else {
+        log('pair selected none');
+      }
+
+      const hasMetric = [
+        'rtt_ms',
+        'jitter_ms',
+        'packets_lost',
+        'bitrate_bps',
+        'frame_rate_fps',
+        'resolution_width',
+        'resolution_height',
+        'freeze_count',
+      ].some((k) => payload[k] !== undefined);
+
+      if (!hasMetric) {
+        return;
+      }
+
+      try {
+        await apiPost('/webrtc/receiver-metrics', payload);
+      } catch (err) {
+        log(`stats push failed: ${err.message}`);
+      }
+    }
+
+    async function waitForOffer(session) {
+      for (;;) {
+        const data = await apiGet(`/webrtc/offer/${encodeURIComponent(session)}`);
+        if (data.available && data.sdp) return data.sdp;
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    }
+
+    async function postCandidate(role, candidate) {
+      await apiPost('/webrtc/candidate', { session: activeSession, role, candidate });
+    }
+
+    async function pollRemoteCandidates(role) {
+      if (!pc || !activeSession) return;
+      const data = await apiGet(`/webrtc/candidates/${encodeURIComponent(activeSession)}/${role}?from=${remoteCandidateIndex}`);
+      const list = Array.isArray(data.candidates) ? data.candidates : [];
+      for (const c of list) {
+        try {
+          await pc.addIceCandidate(c);
+        } catch (err) {
+          log(`add remote candidate failed: ${err.message}`);
+        }
+      }
+      remoteCandidateIndex = Number.isInteger(data.next_index) ? data.next_index : remoteCandidateIndex;
+    }
+
+    async function connect() {
+      const session = sessionEl.value.trim();
+      if (!session) return;
+      activeSession = session;
+      remoteCandidateIndex = 0;
+      currentConfig = await apiGet('/webrtc/config');
+      await apiPost('/webrtc/session', { session });
+
+      pc = new RTCPeerConnection({
+        iceServers: (currentConfig && Array.isArray(currentConfig.ice_servers) && currentConfig.ice_servers.length > 0)
+          ? currentConfig.ice_servers
+          : [{ urls: 'stun:stun.l.google.com:19302' }],
+      });
+
+      disconnectBtn.disabled = false;
+
+      pc.ontrack = (evt) => {
+        remoteVideo.srcObject = evt.streams[0];
+        remoteVideo.play().catch(() => {});
+        recordBtn.disabled = false;
+        stopRecordBtn.disabled = false;
+        log('remote track received');
+        const t = evt.track;
+        if (t) {
+          log(`track kind=${t.kind} id=${t.id} state=${t.readyState} muted=${t.muted}`);
+          t.onmute = () => log('track muted');
+          t.onunmute = () => log('track unmuted');
+          t.onended = () => log('track ended');
+        }
+      };
+
+      pc.onconnectionstatechange = () => {
+        log(`pc state: ${pc.connectionState}`);
+        if (pc.connectionState === 'failed' || pc.connectionState === 'closed' || pc.connectionState === 'disconnected') {
+          disconnect(false);
+        }
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        log(`ice state: ${pc.iceConnectionState}`);
+      };
+
+      pc.onsignalingstatechange = () => {
+        log(`signaling state: ${pc.signalingState}`);
+      };
+
+      pc.onicegatheringstatechange = () => {
+        log(`ice gathering: ${pc.iceGatheringState}`);
+      };
+
+      pc.onicecandidateerror = (evt) => {
+        log(`ice candidate error url=${evt.url || ''} code=${evt.errorCode || ''}`);
+      };
+
+      pc.onicecandidate = (evt) => {
+        if (!evt.candidate) return;
+        log(`ice candidate: ${evt.candidate.type || 'unknown'}`);
+        postCandidate('answer', evt.candidate.toJSON()).catch((err) => {
+          log(`candidate post failed: ${err.message}`);
+        });
+      };
+
+      log(`waiting offer for session ${session}`);
+      const offerSdp = await waitForOffer(session);
+      await pc.setRemoteDescription({ type: 'offer', sdp: offerSdp });
+
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      await apiPost('/webrtc/answer', { session, sdp: pc.localDescription.sdp });
+      log('answer posted');
+
+      if (remoteCandidateTimer) clearInterval(remoteCandidateTimer);
+      remoteCandidateTimer = setInterval(() => {
+        pollRemoteCandidates('offer').catch((err) => log(`candidate poll failed: ${err.message}`));
+      }, 500);
+
+      if (statsTimer) clearInterval(statsTimer);
+      statsTimer = setInterval(() => {
+        pushStats().catch((err) => log(`stats error: ${err.message}`));
+      }, 1000);
+
+      if (flowDebugTimer) clearInterval(flowDebugTimer);
+      flowDebugTimer = setInterval(() => {
+        if (!remoteVideo) return;
+        log(`video state readyState=${remoteVideo.readyState} paused=${remoteVideo.paused} currentTime=${remoteVideo.currentTime.toFixed(3)}`);
+      }, 2000);
+    }
+
+    function disconnect(withLog = true) {
+      if (statsTimer) {
+        clearInterval(statsTimer);
+        statsTimer = null;
+      }
+      if (pc) {
+        try {
+          pc.ontrack = null;
+          pc.onconnectionstatechange = null;
+          pc.oniceconnectionstatechange = null;
+          pc.onicecandidate = null;
+          pc.close();
+        } catch (_) {}
+        pc = null;
+      }
+      if (remoteCandidateTimer) {
+        clearInterval(remoteCandidateTimer);
+        remoteCandidateTimer = null;
+      }
+      if (flowDebugTimer) {
+        clearInterval(flowDebugTimer);
+        flowDebugTimer = null;
+      }
+      if (recorder && recorder.state !== 'inactive') {
+        try { recorder.stop(); } catch (_) {}
+      }
+      remoteVideo.pause();
+      remoteVideo.srcObject = null;
+      recordBtn.disabled = true;
+      stopRecordBtn.disabled = true;
+      disconnectBtn.disabled = true;
+      pushStats._prev = null;
+      if (withLog) {
+        log('receiver disconnected');
+      }
+    }
+
+    function startRecording() {
+      if (!remoteVideo.srcObject) {
+        log('no remote stream');
+        return;
+      }
+      recordedChunks = [];
+      recorder = new MediaRecorder(remoteVideo.srcObject, { mimeType: 'video/webm;codecs=vp8,opus' });
+      recorder.ondataavailable = (evt) => {
+        if (evt.data && evt.data.size > 0) recordedChunks.push(evt.data);
+      };
+      recorder.onstop = async () => {
+        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        const form = new FormData();
+        form.append('session', activeSession || 'demo');
+        form.append('recording', blob, 'receiver-recording.webm');
+        try {
+          const resp = await fetch(`${apiBase}/webrtc/recording?session=${encodeURIComponent(activeSession || 'demo')}`, {
+            method: 'POST',
+            body: form,
+          });
+          const data = await resp.json();
+          if (!resp.ok) throw new Error(JSON.stringify(data));
+          log(`recording uploaded: ${data.filename}`);
+        } catch (err) {
+          log(`recording upload failed: ${err.message}`);
+        }
+      };
+      recorder.start(1000);
+      log('recording started');
+    }
+
+    function stopRecording() {
+      if (recorder && recorder.state !== 'inactive') {
+        recorder.stop();
+        log('recording stopped');
+      }
+    }
+
+    connectBtn.addEventListener('click', () => {
+      connect().catch((err) => log(`connect failed: ${err.message}`));
+    });
+    disconnectBtn.addEventListener('click', () => disconnect());
+    recordBtn.addEventListener('click', startRecording);
+    stopRecordBtn.addEventListener('click', stopRecording);
+
+    remoteVideo.addEventListener('loadedmetadata', () => {
+      log(`video loadedmetadata ${remoteVideo.videoWidth}x${remoteVideo.videoHeight}`);
+    });
+    remoteVideo.addEventListener('canplay', () => log('video canplay'));
+    remoteVideo.addEventListener('playing', () => log('video playing'));
+    remoteVideo.addEventListener('waiting', () => log('video waiting'));
+    remoteVideo.addEventListener('stalled', () => log('video stalled'));
+    remoteVideo.addEventListener('error', () => {
+      const code = remoteVideo.error ? remoteVideo.error.code : 'none';
+      log(`video error code=${code}`);
+    });
+  </script>
+</body>
+</html>

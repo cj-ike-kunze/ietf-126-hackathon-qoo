@@ -6,6 +6,7 @@ RUN apk add --no-cache \
     tcpdump \
     iptables \
     wireguard-tools \
+    ffmpeg \
     python3 \
     py3-flask \
     py3-waitress

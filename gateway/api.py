@@ -5,10 +5,11 @@ import time
 import json
 import csv
 import io
+from datetime import datetime
 from urllib import parse as urllib_parse
 from urllib import request as urllib_request
 
-from flask import Flask, jsonify, request, Response
+from flask import Flask, jsonify, request, Response, send_from_directory
 
 app = Flask(__name__)
 
@@ -42,6 +43,27 @@ CORS_ALLOWED_ORIGINS = {
     ).split(",")
     if origin.strip()
 }
+WEBRTC_RECORDINGS_DIR = os.environ.get("WEBRTC_RECORDINGS_DIR", "/webrtc-recordings")
+WEBRTC_REFERENCE_DIR = os.environ.get("WEBRTC_REFERENCE_DIR", "/webrtc-reference")
+WEBRTC_CACHE_DIR = os.environ.get("WEBRTC_CACHE_DIR", "/webrtc-cache")
+WEBRTC_SOURCE_MODE = os.environ.get("WEBRTC_SOURCE_MODE", "reference")
+WEBRTC_ICE_SERVERS = [
+    {"urls": ["stun:stun.l.google.com:19302"]},
+    {
+        "urls": [
+            "stun:openrelay.metered.ca:80",
+            "turn:openrelay.metered.ca:80",
+            "turn:openrelay.metered.ca:443",
+            "turn:openrelay.metered.ca:443?transport=tcp",
+        ],
+        "username": "openrelayproject",
+        "credential": "openrelayproject",
+    },
+]
+
+WEBRTC_SESSION_TTL_SECS = 60 * 60
+WEBRTC_SESSIONS = {}
+WEBRTC_MEDIA_EXTENSIONS = {".mp4", ".mkv"}
 
 QOO_DEFAULTS = {
     "qooMinThroughputMbps": 2.0,
@@ -267,6 +289,102 @@ def _qoo_profile_name_ok(name):
     return bool(re.fullmatch(r"[A-Za-z0-9._-]{1,64}", name or ""))
 
 
+def _webrtc_session_ok(value):
+    return bool(re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", value or ""))
+
+
+def _webrtc_gc_sessions():
+    now = time.time()
+    stale = []
+    for sid, entry in WEBRTC_SESSIONS.items():
+        ts = float(entry.get("updated_at", 0.0))
+        if now - ts > WEBRTC_SESSION_TTL_SECS:
+            stale.append(sid)
+    for sid in stale:
+        WEBRTC_SESSIONS.pop(sid, None)
+
+
+def _webrtc_touch_session(session):
+    _webrtc_gc_sessions()
+    entry = WEBRTC_SESSIONS.setdefault(session, {})
+    entry.setdefault("offer_candidates", [])
+    entry.setdefault("answer_candidates", [])
+    entry["updated_at"] = time.time()
+    return entry
+
+
+def _webrtc_event(session, event, data=None):
+    entry = _webrtc_touch_session(session)
+    events = entry.setdefault("events", [])
+    events.append({
+        "ts": time.time(),
+        "event": event,
+        "data": data or {},
+    })
+    if len(events) > 500:
+        del events[:-500]
+
+
+def _webrtc_ts_filename(prefix, session, ext):
+    ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    safe_session = re.sub(r"[^A-Za-z0-9._:-]", "_", session)
+    return f"{prefix}-{safe_session}-{ts}.{ext}"
+
+
+def _webrtc_reference_files():
+    files = []
+    if not os.path.isdir(WEBRTC_REFERENCE_DIR):
+        return files
+
+    for name in sorted(os.listdir(WEBRTC_REFERENCE_DIR)):
+        full = os.path.join(WEBRTC_REFERENCE_DIR, name)
+        ext = os.path.splitext(name)[1].lower()
+        if os.path.isfile(full) and ext in WEBRTC_MEDIA_EXTENSIONS:
+            files.append(name)
+    return files
+
+
+def _webrtc_reference_filename_ok(name):
+    return bool(re.fullmatch(r"[A-Za-z0-9._ -]{1,255}", name or ""))
+
+
+def _webrtc_ensure_playable(name):
+    ext = os.path.splitext(name)[1].lower()
+    src = os.path.join(WEBRTC_REFERENCE_DIR, name)
+    if not os.path.isfile(src):
+        raise FileNotFoundError("reference media not found")
+
+    if ext == ".mp4":
+        return f"/webrtc/reference/{name}"
+
+    if ext != ".mkv":
+        raise ValueError("unsupported reference extension")
+
+    os.makedirs(WEBRTC_CACHE_DIR, exist_ok=True)
+    out_name = os.path.splitext(name)[0] + ".mp4"
+    out_path = os.path.join(WEBRTC_CACHE_DIR, out_name)
+
+    src_mtime = os.path.getmtime(src)
+    out_mtime = os.path.getmtime(out_path) if os.path.isfile(out_path) else 0.0
+    if out_mtime < src_mtime:
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", src,
+            "-an",
+            "-c:v", "libx264",
+            "-preset", "veryfast",
+            "-crf", "23",
+            "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
+            out_path,
+        ]
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        if proc.returncode != 0:
+            raise RuntimeError(f"ffmpeg transcode failed: {proc.stderr[-500:]}")
+
+    return f"/webrtc/cache/{out_name}"
+
+
 def _qoo_write_profile(name, config):
     fields = _qoo_config_fields(config)
     line = f"qoo_config_profile,name={_qoo_escape_tag(name)} {','.join(fields)}"
@@ -381,6 +499,336 @@ def list_profiles():
 @app.route("/profiles", methods=["GET"])
 def profiles():
     return jsonify({"profiles": list_profiles()})
+
+
+@app.route("/webrtc/config", methods=["GET"])
+def webrtc_config_get():
+    files = _webrtc_reference_files()
+    default_file = "reference.mp4" if "reference.mp4" in files else (files[0] if files else None)
+    return jsonify({
+        "source_mode": WEBRTC_SOURCE_MODE,
+        "reference_url": f"/webrtc/reference/{default_file}" if default_file else None,
+        "default_reference_file": default_file,
+        "reference_files": files,
+        "ice_servers": WEBRTC_ICE_SERVERS,
+    })
+
+
+@app.route("/webrtc/reference-files", methods=["GET"])
+def webrtc_reference_files_get():
+    files = _webrtc_reference_files()
+    return jsonify({"files": files})
+
+
+@app.route("/webrtc/reference-playable/<path:filename>", methods=["GET"])
+def webrtc_reference_playable_get(filename):
+    if not _webrtc_reference_filename_ok(filename):
+        return jsonify({"error": "invalid filename"}), 400
+    try:
+        playable_url = _webrtc_ensure_playable(filename)
+    except FileNotFoundError:
+        return jsonify({"error": "reference file not found"}), 404
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+    return jsonify({"filename": filename, "playable_url": playable_url})
+
+
+@app.route("/webrtc/reference/<path:filename>", methods=["GET"])
+def webrtc_reference_file(filename):
+    return send_from_directory(WEBRTC_REFERENCE_DIR, filename)
+
+
+@app.route("/webrtc/cache/<path:filename>", methods=["GET"])
+def webrtc_cache_file(filename):
+    return send_from_directory(WEBRTC_CACHE_DIR, filename)
+
+
+@app.route("/webrtc/sender", methods=["GET"])
+def webrtc_sender_page():
+    return send_from_directory("/web-ui", "webrtc-sender.html")
+
+
+@app.route("/webrtc/session", methods=["POST"])
+def webrtc_session_create():
+    payload = request.get_json(silent=True) or {}
+    session = str(payload.get("session") or "").strip()
+    if not _webrtc_session_ok(session):
+        return jsonify({"error": "invalid session"}), 400
+
+    payload = request.get_json(silent=True) or {}
+    reset = bool(payload.get("reset", False))
+
+    entry = _webrtc_touch_session(session)
+    created = "offer" not in entry and "answer" not in entry
+    if reset or created:
+        entry["offer"] = None
+        entry["answer"] = None
+        entry["offer_candidates"] = []
+        entry["answer_candidates"] = []
+        _webrtc_event(session, "session_reset", {"reset": reset, "created": created})
+    else:
+        _webrtc_event(session, "session_reused", {
+            "has_offer": bool(entry.get("offer")),
+            "has_answer": bool(entry.get("answer")),
+            "offer_candidates": len(entry.get("offer_candidates", [])),
+            "answer_candidates": len(entry.get("answer_candidates", [])),
+        })
+    return jsonify({"ok": True, "session": session, "created": created, "reset": reset})
+
+
+@app.route("/webrtc/session/<session>", methods=["GET"])
+def webrtc_session_get(session):
+    if not _webrtc_session_ok(session):
+        return jsonify({"error": "invalid session"}), 400
+    entry = WEBRTC_SESSIONS.get(session)
+    if not entry:
+        return jsonify({"exists": False, "session": session})
+    return jsonify({
+        "exists": True,
+        "session": session,
+        "has_offer": bool(entry.get("offer")),
+        "has_answer": bool(entry.get("answer")),
+    })
+
+
+@app.route("/webrtc/offer", methods=["POST"])
+def webrtc_offer_post():
+    payload = request.get_json(silent=True) or {}
+    session = str(payload.get("session") or "").strip()
+    sdp = str(payload.get("sdp") or "")
+    if not _webrtc_session_ok(session):
+        return jsonify({"error": "invalid session"}), 400
+    if not sdp:
+        return jsonify({"error": "missing sdp"}), 400
+
+    entry = _webrtc_touch_session(session)
+    entry["offer"] = sdp
+    _webrtc_event(session, "offer_posted", {"sdp_len": len(sdp)})
+    return jsonify({"ok": True, "session": session})
+
+
+@app.route("/webrtc/offer/<session>", methods=["GET"])
+def webrtc_offer_get(session):
+    if not _webrtc_session_ok(session):
+        return jsonify({"error": "invalid session"}), 400
+    entry = WEBRTC_SESSIONS.get(session)
+    if not entry or not entry.get("offer"):
+        return jsonify({"available": False, "session": session})
+    return jsonify({"available": True, "session": session, "sdp": entry["offer"]})
+
+
+@app.route("/webrtc/answer", methods=["POST"])
+def webrtc_answer_post():
+    payload = request.get_json(silent=True) or {}
+    session = str(payload.get("session") or "").strip()
+    sdp = str(payload.get("sdp") or "")
+    if not _webrtc_session_ok(session):
+        return jsonify({"error": "invalid session"}), 400
+    if not sdp:
+        return jsonify({"error": "missing sdp"}), 400
+
+    entry = _webrtc_touch_session(session)
+    entry["answer"] = sdp
+    _webrtc_event(session, "answer_posted", {"sdp_len": len(sdp)})
+    return jsonify({"ok": True, "session": session})
+
+
+@app.route("/webrtc/answer/<session>", methods=["GET"])
+def webrtc_answer_get(session):
+    if not _webrtc_session_ok(session):
+        return jsonify({"error": "invalid session"}), 400
+    entry = WEBRTC_SESSIONS.get(session)
+    if not entry or not entry.get("answer"):
+        return jsonify({"available": False, "session": session})
+    return jsonify({"available": True, "session": session, "sdp": entry["answer"]})
+
+
+@app.route("/webrtc/candidate", methods=["POST"])
+def webrtc_candidate_post():
+    payload = request.get_json(silent=True) or {}
+    session = str(payload.get("session") or "").strip()
+    role = str(payload.get("role") or "").strip()
+    candidate = payload.get("candidate")
+    if not _webrtc_session_ok(session):
+        return jsonify({"error": "invalid session"}), 400
+    if role not in ("offer", "answer"):
+        return jsonify({"error": "invalid role"}), 400
+    if not isinstance(candidate, dict):
+        return jsonify({"error": "invalid candidate"}), 400
+
+    entry = _webrtc_touch_session(session)
+    key = "offer_candidates" if role == "offer" else "answer_candidates"
+    entry[key].append(candidate)
+    cstr = str(candidate.get("candidate") or "")
+    ctype = "unknown"
+    m = re.search(r" typ ([a-zA-Z0-9_]+)", cstr)
+    if m:
+        ctype = m.group(1)
+    _webrtc_event(session, "candidate_posted", {"role": role, "type": ctype, "count": len(entry[key])})
+    return jsonify({"ok": True, "session": session, "role": role, "count": len(entry[key])})
+
+
+@app.route("/webrtc/candidates/<session>/<role>", methods=["GET"])
+def webrtc_candidates_get(session, role):
+    if not _webrtc_session_ok(session):
+        return jsonify({"error": "invalid session"}), 400
+    if role not in ("offer", "answer"):
+        return jsonify({"error": "invalid role"}), 400
+
+    entry = WEBRTC_SESSIONS.get(session)
+    if not entry:
+        return jsonify({"session": session, "role": role, "candidates": [], "next_index": 0})
+
+    key = "offer_candidates" if role == "offer" else "answer_candidates"
+    data = entry.get(key, [])
+    try:
+        start = int(request.args.get("from", "0"))
+    except Exception:
+        start = 0
+    if start < 0:
+        start = 0
+    if start > len(data):
+        start = len(data)
+
+    result = {
+        "session": session,
+        "role": role,
+        "candidates": data[start:],
+        "next_index": len(data),
+    }
+    _webrtc_event(session, "candidates_polled", {
+        "role": role,
+        "from": start,
+        "returned": len(result["candidates"]),
+        "total": len(data),
+    })
+    return jsonify(result)
+
+
+@app.route("/webrtc/receiver-metrics", methods=["POST"])
+def webrtc_receiver_metrics_post():
+    payload = request.get_json(silent=True) or {}
+    session = str(payload.get("session") or "").strip()
+    if not _webrtc_session_ok(session):
+        return jsonify({"error": "invalid session"}), 400
+
+    ts_ms = payload.get("timestamp_ms")
+    try:
+        ts_ns = int(float(ts_ms) * 1_000_000) if ts_ms is not None else int(time.time() * 1_000_000_000)
+    except Exception:
+        ts_ns = int(time.time() * 1_000_000_000)
+
+    def _num(name):
+        value = payload.get(name)
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except Exception:
+            return None
+
+    fields = []
+    for name in (
+        "rtt_ms",
+        "jitter_ms",
+        "packets_lost",
+        "packets_received",
+        "bytes_received",
+        "bitrate_bps",
+        "frame_rate_fps",
+        "resolution_width",
+        "resolution_height",
+        "freeze_count",
+    ):
+        v = _num(name)
+        if v is not None:
+            fields.append(f"{name}={v}")
+
+    if not fields:
+        return jsonify({"ok": True, "dropped": "no metrics provided"})
+
+    _webrtc_event(session, "receiver_metrics", {"field_count": len(fields)})
+
+    line = (
+        "qoo_webrtc_receiver,source=webrtc,mode=active,role=receiver,"
+        f"session={_qoo_escape_tag(session)} "
+        + ",".join(fields)
+        + f" {ts_ns}"
+    )
+
+    try:
+        _influx_write_line(line)
+    except Exception as exc:
+        _webrtc_event(session, "receiver_metrics_error", {"error": str(exc)})
+        return jsonify({"error": str(exc)}), 500
+    return jsonify({"ok": True})
+
+
+@app.route("/webrtc/debug/<session>", methods=["GET"])
+def webrtc_debug_get(session):
+    if not _webrtc_session_ok(session):
+        return jsonify({"error": "invalid session"}), 400
+    entry = WEBRTC_SESSIONS.get(session)
+    if not entry:
+        return jsonify({"exists": False, "session": session})
+
+    events = entry.get("events", [])
+    limit = request.args.get("limit", "100")
+    try:
+        limit_int = max(1, min(int(limit), 500))
+    except Exception:
+        limit_int = 100
+
+    def _summarize_candidates(items):
+        out = []
+        for c in items[-30:]:
+            cstr = str(c.get("candidate") or "")
+            ctype = "unknown"
+            m = re.search(r" typ ([a-zA-Z0-9_]+)", cstr)
+            if m:
+                ctype = m.group(1)
+            out.append({
+                "type": ctype,
+                "sdpMid": c.get("sdpMid"),
+                "sdpMLineIndex": c.get("sdpMLineIndex"),
+                "usernameFragment": c.get("usernameFragment"),
+                "raw": cstr[:180],
+            })
+        return out
+
+    return jsonify({
+        "exists": True,
+        "session": session,
+        "has_offer": bool(entry.get("offer")),
+        "has_answer": bool(entry.get("answer")),
+        "offer_sdp_len": len(entry.get("offer") or ""),
+        "answer_sdp_len": len(entry.get("answer") or ""),
+        "offer_candidates": len(entry.get("offer_candidates", [])),
+        "answer_candidates": len(entry.get("answer_candidates", [])),
+        "offer_candidate_details": _summarize_candidates(entry.get("offer_candidates", [])),
+        "answer_candidate_details": _summarize_candidates(entry.get("answer_candidates", [])),
+        "updated_at": entry.get("updated_at"),
+        "events": events[-limit_int:],
+    })
+
+
+@app.route("/webrtc/recording", methods=["POST"])
+def webrtc_recording_upload():
+    session = str(request.args.get("session") or request.form.get("session") or "").strip()
+    if not _webrtc_session_ok(session):
+        return jsonify({"error": "invalid session"}), 400
+
+    file = request.files.get("recording")
+    if file is None:
+        return jsonify({"error": "missing recording file"}), 400
+
+    os.makedirs(WEBRTC_RECORDINGS_DIR, exist_ok=True)
+    filename = _webrtc_ts_filename("webrtc-receiver", session, "webm")
+    path = os.path.join(WEBRTC_RECORDINGS_DIR, filename)
+    file.save(path)
+    return jsonify({"ok": True, "session": session, "filename": filename, "path": path})
 
 
 @app.route("/qoo-config", methods=["GET"])

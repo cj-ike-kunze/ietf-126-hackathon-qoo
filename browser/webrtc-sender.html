@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WebRTC Sender</title>
+  <style>
+    body {
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 20px;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+    .row { margin: 10px 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    input, button, select {
+      font-size: 14px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: 1px solid #334155;
+      background: #111827;
+      color: #e2e8f0;
+    }
+    video {
+      width: min(960px, 100%);
+      border-radius: 10px;
+      border: 1px solid #334155;
+      background: black;
+    }
+    pre {
+      white-space: pre-wrap;
+      background: #111827;
+      border: 1px solid #334155;
+      padding: 10px;
+      border-radius: 8px;
+      max-width: 960px;
+      max-height: 260px;
+      overflow: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>WebRTC Sender (Browser Container)</h1>
+  <div class="row">
+    <label for="session">Session</label>
+    <input id="session" value="demo" />
+    <label for="mode">Mode</label>
+    <select id="mode">
+      <option value="reference">Reference Video</option>
+      <option value="webcam">Webcam</option>
+    </select>
+    <label for="referenceFile">File</label>
+    <select id="referenceFile"></select>
+    <button id="startBtn">Start Sender</button>
+    <button id="stopBtn" disabled>Stop Sender</button>
+  </div>
+  <div class="row">
+    <video id="sourceVideo" playsinline controls muted loop></video>
+  </div>
+  <pre id="log"></pre>
+
+  <script>
+    const apiBase = `${location.protocol}//172.28.0.10:9000`;
+    const sourceVideo = document.getElementById('sourceVideo');
+    const sessionEl = document.getElementById('session');
+    const modeEl = document.getElementById('mode');
+    const referenceFileEl = document.getElementById('referenceFile');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const logEl = document.getElementById('log');
+    let pc = null;
+    let activeStream = null;
+    let currentConfig = null;
+    let remoteCandidateTimer = null;
+    let remoteCandidateIndex = 0;
+    let activeSession = null;
+    let txDebugTimer = null;
+
+    function log(msg) {
+      logEl.textContent += `${new Date().toISOString()} ${msg}\n`;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    async function apiGet(path) {
+      const resp = await fetch(`${apiBase}${path}`);
+      if (!resp.ok) throw new Error(`GET ${path} failed ${resp.status}`);
+      return await resp.json();
+    }
+
+    async function apiPost(path, body) {
+      const resp = await fetch(`${apiBase}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {}),
+      });
+      if (!resp.ok) throw new Error(`POST ${path} failed ${resp.status}`);
+      return await resp.json();
+    }
+
+    async function waitForAnswer(session) {
+      for (;;) {
+        const data = await apiGet(`/webrtc/answer/${encodeURIComponent(session)}`);
+        if (data.available && data.sdp) return data.sdp;
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    }
+
+    async function postCandidate(role, candidate) {
+      await apiPost('/webrtc/candidate', { session: activeSession, role, candidate });
+    }
+
+    async function pollRemoteCandidates(role) {
+      if (!pc || !activeSession) return;
+      const data = await apiGet(`/webrtc/candidates/${encodeURIComponent(activeSession)}/${role}?from=${remoteCandidateIndex}`);
+      const list = Array.isArray(data.candidates) ? data.candidates : [];
+      for (const c of list) {
+        try {
+          await pc.addIceCandidate(c);
+        } catch (err) {
+          log(`add remote candidate failed: ${err.message}`);
+        }
+      }
+      remoteCandidateIndex = Number.isInteger(data.next_index) ? data.next_index : remoteCandidateIndex;
+    }
+
+    function updateReferenceVisibility() {
+      const show = modeEl.value === 'reference';
+      referenceFileEl.style.display = show ? 'inline-block' : 'none';
+      const label = document.querySelector('label[for="referenceFile"]');
+      if (label) {
+        label.style.display = show ? 'inline-block' : 'none';
+      }
+    }
+
+    function setReferenceOptions(files, selected) {
+      referenceFileEl.innerHTML = '';
+      for (const name of files || []) {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        referenceFileEl.appendChild(opt);
+      }
+      if (selected) {
+        referenceFileEl.value = selected;
+      }
+      if (!referenceFileEl.value && referenceFileEl.options.length > 0) {
+        referenceFileEl.value = referenceFileEl.options[0].value;
+      }
+    }
+
+    async function getSourceStream(mode) {
+      if (mode === 'webcam') {
+        return await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      }
+      const selectedFile = referenceFileEl.value;
+      if (!selectedFile) {
+        throw new Error('no reference video available in browser/reference');
+      }
+      const playable = await apiGet(`/webrtc/reference-playable/${encodeURIComponent(selectedFile)}`);
+      if (!playable || !playable.playable_url) {
+        throw new Error('no playable url from gateway');
+      }
+      sourceVideo.srcObject = null;
+      sourceVideo.src = `${apiBase}${playable.playable_url}`;
+      sourceVideo.muted = true;
+      sourceVideo.loop = true;
+      await sourceVideo.play();
+      return sourceVideo.captureStream();
+    }
+
+    async function startSender() {
+      const session = sessionEl.value.trim();
+      const mode = modeEl.value;
+      if (!session) throw new Error('missing session');
+      activeSession = session;
+      remoteCandidateIndex = 0;
+
+      if (pc) {
+        stopSender();
+      }
+
+      await apiPost('/webrtc/session', { session });
+      currentConfig = await apiGet('/webrtc/config');
+
+      const stream = await getSourceStream(mode);
+      activeStream = stream;
+
+      pc = new RTCPeerConnection({
+        iceServers: (currentConfig && Array.isArray(currentConfig.ice_servers) && currentConfig.ice_servers.length > 0)
+          ? currentConfig.ice_servers
+          : [{ urls: 'stun:stun.l.google.com:19302' }],
+      });
+
+      for (const track of stream.getTracks()) {
+        pc.addTrack(track, stream);
+      }
+
+      pc.onconnectionstatechange = () => {
+        log(`pc state: ${pc.connectionState}`);
+        if (pc.connectionState === 'failed' || pc.connectionState === 'closed' || pc.connectionState === 'disconnected') {
+          stopSender(false);
+        }
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        log(`ice state: ${pc.iceConnectionState}`);
+      };
+
+      pc.onsignalingstatechange = () => {
+        log(`signaling state: ${pc.signalingState}`);
+      };
+
+      pc.onicegatheringstatechange = () => {
+        log(`ice gathering: ${pc.iceGatheringState}`);
+      };
+
+      pc.onicecandidateerror = (evt) => {
+        log(`ice candidate error url=${evt.url || ''} code=${evt.errorCode || ''}`);
+      };
+
+      pc.onicecandidate = (evt) => {
+        if (!evt.candidate) return;
+        log(`ice candidate: ${evt.candidate.type || 'unknown'}`);
+        postCandidate('offer', evt.candidate.toJSON()).catch((err) => {
+          log(`candidate post failed: ${err.message}`);
+        });
+      };
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      await apiPost('/webrtc/offer', { session, sdp: pc.localDescription.sdp });
+      log(`offer posted for session ${session}`);
+
+      const answerSdp = await waitForAnswer(session);
+      await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+      log('answer applied');
+
+      if (remoteCandidateTimer) clearInterval(remoteCandidateTimer);
+      remoteCandidateTimer = setInterval(() => {
+        pollRemoteCandidates('answer').catch((err) => log(`candidate poll failed: ${err.message}`));
+      }, 500);
+
+      if (txDebugTimer) clearInterval(txDebugTimer);
+      txDebugTimer = setInterval(async () => {
+        if (!pc) return;
+        try {
+          const stats = await pc.getStats();
+          let out = null;
+          let selectedPair = null;
+          let localCand = null;
+          let remoteCand = null;
+          stats.forEach((r) => {
+            if (r.type === 'outbound-rtp' && r.kind === 'video' && !r.isRemote) out = r;
+            if (r.type === 'candidate-pair' && r.state === 'succeeded' && (r.nominated || r.selected)) selectedPair = r;
+          });
+          if (out) {
+            log(`flow tx bytes=${out.bytesSent || 0} packets=${out.packetsSent || 0} framesEncoded=${out.framesEncoded || 0} fps=${out.framesPerSecond || 0}`);
+          }
+          if (selectedPair) {
+            localCand = stats.get(selectedPair.localCandidateId) || null;
+            remoteCand = stats.get(selectedPair.remoteCandidateId) || null;
+            log(`pair selected local=${localCand ? localCand.candidateType : 'na'} remote=${remoteCand ? remoteCand.candidateType : 'na'} rtt=${selectedPair.currentRoundTripTime || 0}`);
+          } else {
+            log('pair selected none');
+          }
+          log(`source state readyState=${sourceVideo.readyState} paused=${sourceVideo.paused} currentTime=${sourceVideo.currentTime.toFixed(3)}`);
+        } catch (err) {
+          log(`tx stats error: ${err.message}`);
+        }
+      }, 2000);
+      stopBtn.disabled = false;
+    }
+
+    function stopSender(withLog = true) {
+      if (pc) {
+        try {
+          pc.onconnectionstatechange = null;
+          pc.oniceconnectionstatechange = null;
+          pc.onicecandidate = null;
+          pc.close();
+        } catch (_) {}
+        pc = null;
+      }
+      if (remoteCandidateTimer) {
+        clearInterval(remoteCandidateTimer);
+        remoteCandidateTimer = null;
+      }
+      if (txDebugTimer) {
+        clearInterval(txDebugTimer);
+        txDebugTimer = null;
+      }
+      if (activeStream) {
+        for (const track of activeStream.getTracks()) {
+          try { track.stop(); } catch (_) {}
+        }
+        activeStream = null;
+      }
+      activeSession = null;
+      sourceVideo.pause();
+      sourceVideo.srcObject = null;
+      sourceVideo.removeAttribute('src');
+      sourceVideo.load();
+      stopBtn.disabled = true;
+      if (withLog) {
+        log('sender stopped');
+      }
+    }
+
+    async function initConfig() {
+      try {
+        const cfg = await apiGet('/webrtc/config');
+        if (cfg && (cfg.source_mode === 'reference' || cfg.source_mode === 'webcam')) {
+          modeEl.value = cfg.source_mode;
+        }
+        setReferenceOptions(cfg.reference_files || [], cfg.default_reference_file || '');
+        updateReferenceVisibility();
+      } catch (err) {
+        log(`config read failed: ${err.message}`);
+      }
+    }
+
+    startBtn.addEventListener('click', () => {
+      startSender().catch((err) => log(`start failed: ${err.message}`));
+    });
+    stopBtn.addEventListener('click', () => stopSender());
+    modeEl.addEventListener('change', updateReferenceVisibility);
+
+    initConfig();
+  </script>
+</body>
+</html>

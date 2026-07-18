@@ -6,3 +6,6 @@
 .opencode
 data/*
 .wg-mac/
+profiles/
+*.DS_Store
+browser/reference/
