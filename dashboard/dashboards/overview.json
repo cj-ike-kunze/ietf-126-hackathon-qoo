@@ -850,6 +850,280 @@
           "refId": "A"
         }
       ]
+    },
+
+    {
+      "id": 125,
+      "type": "row",
+      "title": "Active - Network Quality (Apple/goresponsiveness)",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 72
+      }
+    },
+    {
+      "id": 126,
+      "type": "timeseries",
+      "title": "Network quality RTT",
+      "description": "Idle and loaded RTT dots from scripts/run-network-quality.sh.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 73
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "points",
+            "lineWidth": 0,
+            "pointSize": 8
+          },
+          "displayName": "${__field.labels.label}"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_network_quality_rtt_ms\" and r._field == \"value\")\n  |> filter(fn: (r) => r.mode == \"active\" and r.source == \"network-quality\")\n  |> map(fn: (r) => ({r with label: if r.phase == \"idle\" then \"Idle RTT (#\" + (if exists r.run then r.run else \"?\") + \")\" else \"Loaded RTT (#\" + (if exists r.run then r.run else \"?\") + \")\"}))\n  |> group(columns: [\"label\"])\n  |> keep(columns: [\"_time\", \"_value\", \"label\"])",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 127,
+      "type": "timeseries",
+      "title": "Network quality RPM",
+      "description": "Idle and loaded RPM dots from scripts/run-network-quality.sh.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 73
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "points",
+            "lineWidth": 0,
+            "pointSize": 8
+          },
+          "displayName": "${__field.labels.label}"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_network_quality_rpm\" and r._field == \"value\")\n  |> filter(fn: (r) => r.mode == \"active\" and r.source == \"network-quality\")\n  |> map(fn: (r) => ({r with label: if r.phase == \"idle\" then \"Idle RPM (#\" + (if exists r.run then r.run else \"?\") + \")\" else \"Loaded RPM (#\" + (if exists r.run then r.run else \"?\") + \")\"}))\n  |> group(columns: [\"label\"])\n  |> keep(columns: [\"_time\", \"_value\", \"label\"])",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 128,
+      "type": "timeseries",
+      "title": "Network quality throughput",
+      "description": "Download and upload throughput dots.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 73
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Mbits",
+          "custom": {
+            "drawStyle": "points",
+            "lineWidth": 0,
+            "pointSize": 8
+          },
+          "displayName": "${__field.labels.label}"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_network_quality_throughput_mbps\" and r._field == \"value\")\n  |> filter(fn: (r) => r.mode == \"active\" and r.source == \"network-quality\")\n  |> map(fn: (r) => ({r with label: if exists r.direction and r.direction == \"download\" then \"Download (#\" + (if exists r.run then r.run else \"?\") + \")\" else \"Upload (#\" + (if exists r.run then r.run else \"?\") + \")\"}))\n  |> group(columns: [\"label\"])\n  |> keep(columns: [\"_time\", \"_value\", \"label\"])",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 129,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "h": 2,
+        "w": 24,
+        "x": 0,
+        "y": 81
+      },
+      "options": {
+        "mode": "html",
+        "content": "<div style=\"display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 2px;\"><span style=\"font-size:12px;color:#888;\">Latency window:</span><a href=\"/d/qoo-overview/qoo-overview?var-nqLatencyWindowStartMs=0\" style=\"padding:2px 8px;border:1px solid #666;border-radius:4px;text-decoration:none;\">0-100</a><a href=\"/d/qoo-overview/qoo-overview?var-nqLatencyWindowStartMs=100\" style=\"padding:2px 8px;border:1px solid #666;border-radius:4px;text-decoration:none;\">100-200</a><a href=\"/d/qoo-overview/qoo-overview?var-nqLatencyWindowStartMs=200\" style=\"padding:2px 8px;border:1px solid #666;border-radius:4px;text-decoration:none;\">200-300</a><a href=\"/d/qoo-overview/qoo-overview?var-nqLatencyWindowStartMs=300\" style=\"padding:2px 8px;border:1px solid #666;border-radius:4px;text-decoration:none;\">300-400</a><a href=\"/d/qoo-overview/qoo-overview?var-nqLatencyWindowStartMs=400\" style=\"padding:2px 8px;border:1px solid #666;border-radius:4px;text-decoration:none;\">400-500</a><a href=\"/d/qoo-overview/qoo-overview?var-nqLatencyWindowStartMs=500\" style=\"padding:2px 8px;border:1px solid #666;border-radius:4px;text-decoration:none;\">500-600</a><a href=\"/d/qoo-overview/qoo-overview?var-nqLatencyWindowStartMs=600\" style=\"padding:2px 8px;border:1px solid #666;border-radius:4px;text-decoration:none;\">600-700</a><a href=\"/d/qoo-overview/qoo-overview?var-nqLatencyWindowStartMs=700\" style=\"padding:2px 8px;border:1px solid #666;border-radius:4px;text-decoration:none;\">700-800</a><a href=\"/d/qoo-overview/qoo-overview?var-nqLatencyWindowStartMs=800\" style=\"padding:2px 8px;border:1px solid #666;border-radius:4px;text-decoration:none;\">800-900</a><a href=\"/d/qoo-overview/qoo-overview?var-nqLatencyWindowStartMs=900\" style=\"padding:2px 8px;border:1px solid #666;border-radius:4px;text-decoration:none;\">900-1000</a><a href=\"/d/qoo-overview/qoo-overview?var-nqLatencyWindowStartMs=1000\" style=\"padding:2px 8px;border:1px solid #666;border-radius:4px;text-decoration:none;\">1000-1100</a></div>"
+      }
+    },
+    {
+      "id": 130,
+      "type": "barchart",
+      "title": "Idle latency histogram (5ms bins)",
+      "description": "Grouped bars (no overlap) in 5ms bins for the selected 100ms latency window.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 83
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "displayName": "${__field.labels.label}"
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "vertical",
+        "xField": "bin",
+        "xTickLabelRotation": 90,
+        "barWidth": 0.8,
+        "groupWidth": 0.7,
+        "stacking": "none",
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "import \"array\"\nimport \"math\"\n\nstartMs = float(v: \"${nqLatencyWindowStartMs}\")\n\nbins = array.from(rows: [\n  {bin_start: startMs + 0.0}, {bin_start: startMs + 5.0}, {bin_start: startMs + 10.0}, {bin_start: startMs + 15.0},\n  {bin_start: startMs + 20.0}, {bin_start: startMs + 25.0}, {bin_start: startMs + 30.0}, {bin_start: startMs + 35.0},\n  {bin_start: startMs + 40.0}, {bin_start: startMs + 45.0}, {bin_start: startMs + 50.0}, {bin_start: startMs + 55.0},\n  {bin_start: startMs + 60.0}, {bin_start: startMs + 65.0}, {bin_start: startMs + 70.0}, {bin_start: startMs + 75.0},\n  {bin_start: startMs + 80.0}, {bin_start: startMs + 85.0}, {bin_start: startMs + 90.0}, {bin_start: startMs + 95.0}\n])\n  |> map(fn: (r) => ({r with bin: string(v: int(v: r.bin_start)) + \"-\" + string(v: int(v: r.bin_start) + 5)}))\n\nzeros = union(tables: [\n  bins |> map(fn: (r) => ({series: \"il_h2_req_resp\", bin_start: r.bin_start, bin: r.bin, count: 0.0})),\n  bins |> map(fn: (r) => ({series: \"il_tcp_handshake_443\", bin_start: r.bin_start, bin: r.bin, count: 0.0})),\n  bins |> map(fn: (r) => ({series: \"il_tls_handshake\", bin_start: r.bin_start, bin: r.bin, count: 0.0}))\n])\n\ncounts = from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_network_quality_latency_sample_ms\" and r._field == \"value\")\n  |> filter(fn: (r) => r.mode == \"active\" and r.source == \"network-quality\" and r.state == \"idle\")\n  |> filter(fn: (r) => r._value >= startMs and r._value < startMs + 100.0)\n  |> map(fn: (r) => ({series: r.series, bin_start: float(v: int(v: math.floor(x: r._value / 5.0) * 5.0)), count: 1.0}))\n  |> group(columns: [\"series\", \"bin_start\"])\n  |> sum(column: \"count\")\n  |> map(fn: (r) => ({series: r.series, bin_start: r.bin_start, bin: string(v: int(v: r.bin_start)) + \"-\" + string(v: int(v: r.bin_start) + 5), count: r.count}))\n\nunion(tables: [zeros, counts])\n  |> group(columns: [\"series\", \"bin_start\", \"bin\"])\n  |> max(column: \"count\")\n  |> group()\n  |> pivot(rowKey: [\"bin_start\", \"bin\"], columnKey: [\"series\"], valueColumn: \"count\")\n  |> sort(columns: [\"bin_start\"])\n  |> keep(columns: [\"bin\", \"il_h2_req_resp\", \"il_tcp_handshake_443\", \"il_tls_handshake\"])",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 131,
+      "type": "barchart",
+      "title": "Loaded latency histogram (5ms bins)",
+      "description": "Grouped bars (no overlap) in 5ms bins for the selected 100ms latency window.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 83
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "displayName": "${__field.labels.label}"
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "vertical",
+        "xField": "bin",
+        "xTickLabelRotation": 90,
+        "barWidth": 0.8,
+        "groupWidth": 0.7,
+        "stacking": "none",
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "import \"array\"\nimport \"math\"\n\nstartMs = float(v: \"${nqLatencyWindowStartMs}\")\n\nbins = array.from(rows: [\n  {bin_start: startMs + 0.0}, {bin_start: startMs + 5.0}, {bin_start: startMs + 10.0}, {bin_start: startMs + 15.0},\n  {bin_start: startMs + 20.0}, {bin_start: startMs + 25.0}, {bin_start: startMs + 30.0}, {bin_start: startMs + 35.0},\n  {bin_start: startMs + 40.0}, {bin_start: startMs + 45.0}, {bin_start: startMs + 50.0}, {bin_start: startMs + 55.0},\n  {bin_start: startMs + 60.0}, {bin_start: startMs + 65.0}, {bin_start: startMs + 70.0}, {bin_start: startMs + 75.0},\n  {bin_start: startMs + 80.0}, {bin_start: startMs + 85.0}, {bin_start: startMs + 90.0}, {bin_start: startMs + 95.0}\n])\n  |> map(fn: (r) => ({r with bin: string(v: int(v: r.bin_start)) + \"-\" + string(v: int(v: r.bin_start) + 5)}))\n\nzeros = union(tables: [\n  bins |> map(fn: (r) => ({series: \"lud_foreign_h2_req_resp\", bin_start: r.bin_start, bin: r.bin, count: 0.0})),\n  bins |> map(fn: (r) => ({series: \"lud_foreign_tcp_handshake_443\", bin_start: r.bin_start, bin: r.bin, count: 0.0})),\n  bins |> map(fn: (r) => ({series: \"lud_foreign_tls_handshake\", bin_start: r.bin_start, bin: r.bin, count: 0.0})),\n  bins |> map(fn: (r) => ({series: \"lud_self_h2_req_resp\", bin_start: r.bin_start, bin: r.bin, count: 0.0}))\n])\n\ncounts = from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_network_quality_latency_sample_ms\" and r._field == \"value\")\n  |> filter(fn: (r) => r.mode == \"active\" and r.source == \"network-quality\" and r.state == \"loaded\")\n  |> filter(fn: (r) => r._value >= startMs and r._value < startMs + 100.0)\n  |> map(fn: (r) => ({series: r.series, bin_start: float(v: int(v: math.floor(x: r._value / 5.0) * 5.0)), count: 1.0}))\n  |> group(columns: [\"series\", \"bin_start\"])\n  |> sum(column: \"count\")\n  |> map(fn: (r) => ({series: r.series, bin_start: r.bin_start, bin: string(v: int(v: r.bin_start)) + \"-\" + string(v: int(v: r.bin_start) + 5), count: r.count}))\n\nunion(tables: [zeros, counts])\n  |> group(columns: [\"series\", \"bin_start\", \"bin\"])\n  |> max(column: \"count\")\n  |> group()\n  |> pivot(rowKey: [\"bin_start\", \"bin\"], columnKey: [\"series\"], valueColumn: \"count\")\n  |> sort(columns: [\"bin_start\"])\n  |> keep(columns: [\"bin\", \"lud_foreign_h2_req_resp\", \"lud_foreign_tcp_handshake_443\", \"lud_foreign_tls_handshake\", \"lud_self_h2_req_resp\"])",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "templating": {
@@ -1023,6 +1297,105 @@
           {
             "text": "15m",
             "value": "15m",
+            "selected": false
+          }
+        ]
+      },
+      {
+        "name": "nqLatencyWindowStartMs",
+        "type": "custom",
+        "label": "NQ latency window start (ms)",
+        "multi": false,
+        "includeAll": false,
+        "query": "0,100,200,300,400,500,600,700,800,900,1000,1100,1200,1300,1400,1500,1600,1700,1800,1900,2000,2100,2200,2300,2400,2500,2600,2700,2800,2900,3000,3100,3200",
+        "current": {
+          "text": "0",
+          "value": "0"
+        },
+        "options": [
+          {
+            "text": "0",
+            "value": "0",
+            "selected": true
+          },
+          {
+            "text": "200",
+            "value": "200",
+            "selected": false
+          },
+          {
+            "text": "400",
+            "value": "400",
+            "selected": false
+          },
+          {
+            "text": "600",
+            "value": "600",
+            "selected": false
+          },
+          {
+            "text": "800",
+            "value": "800",
+            "selected": false
+          },
+          {
+            "text": "1000",
+            "value": "1000",
+            "selected": false
+          },
+          {
+            "text": "1200",
+            "value": "1200",
+            "selected": false
+          },
+          {
+            "text": "1400",
+            "value": "1400",
+            "selected": false
+          },
+          {
+            "text": "1600",
+            "value": "1600",
+            "selected": false
+          },
+          {
+            "text": "1800",
+            "value": "1800",
+            "selected": false
+          },
+          {
+            "text": "2000",
+            "value": "2000",
+            "selected": false
+          },
+          {
+            "text": "2200",
+            "value": "2200",
+            "selected": false
+          },
+          {
+            "text": "2400",
+            "value": "2400",
+            "selected": false
+          },
+          {
+            "text": "2600",
+            "value": "2600",
+            "selected": false
+          },
+          {
+            "text": "2800",
+            "value": "2800",
+            "selected": false
+          },
+          {
+            "text": "3000",
+            "value": "3000",
+            "selected": false
+          },
+          {
+            "text": "3200",
+            "value": "3200",
             "selected": false
           }
         ]

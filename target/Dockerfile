@@ -39,6 +39,10 @@ RUN go mod download
 COPY quicserve/ .
 RUN CGO_ENABLED=0 go build -o /quicserve .
 
+FROM golang:1.24-alpine AS networkquality-build
+
+RUN GOBIN=/out go install github.com/network-quality/goserver/cmd/networkqualityd@latest
+
 FROM alpine:3.19
 
 RUN apk add --no-cache \
@@ -50,11 +54,13 @@ WORKDIR /app
 COPY entrypoint.sh /app/
 COPY --from=dash-gen /dash /var/www/dash
 COPY --from=quic-build /quicserve /app/quicserve
+COPY --from=networkquality-build /out/networkqualityd /app/networkqualityd
 COPY certs /app/certs
 
 RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 5201 8000
 EXPOSE 4433/udp
+EXPOSE 4043
 
 ENTRYPOINT ["/app/entrypoint.sh"]
