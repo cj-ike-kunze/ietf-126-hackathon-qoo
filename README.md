@@ -18,6 +18,7 @@ Grafana.
 - Control panel and Gateway API for profile switching
 - Scripted active probes and goDASH test workflows
 - Optional browser container in the emulated path (noVNC on port 5800)
+- Separate lightweight LibreQoS CLI container (`libreqos-cli`, amd64)
 
 ## Architecture (high level)
 
@@ -95,6 +96,10 @@ macOS quick path (recommended):
 ```sh
 ./scripts/run-godash.sh tcp
 ./scripts/run-godash.sh quic
+
+# LibreQoS CLI (lightweight amd64 container)
+./scripts/libreqos-test.sh
+
 ```
 
 When done:
