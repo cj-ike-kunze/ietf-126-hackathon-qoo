@@ -19,6 +19,7 @@ Grafana.
 - Scripted active probes and goDASH test workflows
 - Optional browser container in the emulated path (noVNC on port 5800)
 - Separate lightweight LibreQoS CLI container (`libreqos-cli`, amd64)
+- Two-party WebRTC demo (sender in browser container, receiver on host browser)
 
 ## Architecture (high level)
 
@@ -100,7 +101,54 @@ macOS quick path (recommended):
 # LibreQoS CLI (lightweight amd64 container)
 ./scripts/libreqos-test.sh
 
+# WebRTC demo bootstrap
+./scripts/run-webrtc-demo.sh demo reference
+
 ```
+
+### 6. WebRTC demo workflow
+
+0. Prepare videos
+- Download desired videos (e.g., from here: https://media.xiph.org/video/derf/)
+- Convert to mkv or mp4 (e.g., `ffmpeg -i FourPeople_1280x720_60.y4m -c:v ffv1 FourPeople_lossless.mkv`)
+
+1. Start or prime session:
+
+```sh
+./scripts/run-webrtc-demo.sh demo reference
+```
+
+2. Open receiver on host browser:
+
+- http://localhost:8080/webrtc-receiver.html
+
+3. Open sender in browser container (noVNC):
+
+- http://localhost:5800, then open http://172.28.0.10:9000/webrtc/sender
+
+4. Use same session on both pages (`demo` by default), then:
+
+- Receiver: `Connect`
+- Sender: `Start Sender`
+- Receiver: `Start Recording` / `Stop Recording`
+
+5. Outputs:
+
+- Receiver recordings: `data/webrtc/recordings/`
+- Receiver stats measurement in Influx: `qoo_webrtc_receiver`
+- Grafana dashboard: `qoo-webrtc`
+
+Media source modes on sender page:
+
+- `reference` (default): plays `browser/reference/reference.mp4` and streams it.
+- `webcam`: attempts `getUserMedia` webcam capture inside browser container.
+
+Browser setting for local WebRTC reliability (host receiver + container sender):
+
+- Firefox: set `media.peerconnection.ice.obfuscate_host_addresses=false` in `about:config`, then restart Firefox.
+- Edge/Chromium: disable mDNS host obfuscation for WebRTC ICE if available in `edge://flags`, or launch with `--disable-features=WebRtcHideLocalIpsWithMdns`.
+
+Note: Deterministic default source can be prepared from `.yuv` input with ffmpeg.
 
 When done:
 
@@ -123,6 +171,7 @@ macOS quick teardown:
 | Active probes | `scripts/run-active-probes.sh` | Ping RTT/loss and iperf throughput metrics |
 | DASH client test | `scripts/run-godash.sh` (tcp/quic) | Segment-level QoO inputs + run exports |
 | Browser path test | noVNC browser on `:5800` + profile switch | Interactive user-perceived impact |
+| WebRTC test | `scripts/run-webrtc-demo.sh` + sender/receiver pages | Receiver stats, recording files, and panelized time-series |
 | Packet capture | `data/pcap/capture.pcap` | Raw traffic for inspection/replay |
 | Time-series telemetry | Collector -> InfluxDB -> Grafana | Dashboard-ready QoO views |
 
@@ -177,6 +226,7 @@ curl -s -X POST http://localhost:9000/qoo-profiles/load/video-call | jq .
 - `qoo-active-overview`: active probe-focused view; same profile controls
 - `qoo-passive-overview`: passive metric-focused view; same profile controls
 - `qoo-comparison`: multi-profile comparison; repeated timeline rows by selected profile
+- `qoo-webrtc`: WebRTC receiver KPI dashboard (RTT, jitter, packet loss, bitrate, FPS, resolution, freezes)
 
 Quick dashboard health check:
 
@@ -197,6 +247,9 @@ docker compose logs --tail=200 dashboard | rg -i 'Flux query failed|compilation 
     http://localhost:9000/status`).
 - Browser UI on `:5800` not reachable
   - Recreate browser service: `docker compose up -d --force-recreate browser`.
+- WebRTC shows `connecting/failed` with no video flow
+  - Disable ICE host-address obfuscation (mDNS) in the browser for local testing:
+    Firefox `media.peerconnection.ice.obfuscate_host_addresses=false`; Chromium/Edge disable `WebRtcHideLocalIpsWithMdns`.
 - macOS tunnel stops passing traffic after gateway recreation
   - Re-run `./scripts/setup-mac-wireguard.sh`, then `sudo wg-quick up
     .wg-mac/qoo-gateway.conf`.

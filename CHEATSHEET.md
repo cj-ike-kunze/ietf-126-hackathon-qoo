@@ -166,6 +166,12 @@ open http://localhost:5800
 ./scripts/ping-in-browser.sh <target>
 ```
 
+WebRTC local host/container note:
+
+- If receiver stays `connecting`/`failed` with no payload flow, disable ICE mDNS host obfuscation.
+- Firefox: `about:config` -> `media.peerconnection.ice.obfuscate_host_addresses=false`.
+- Edge/Chromium: disable `WebRtcHideLocalIpsWithMdns` (flags or launch arg `--disable-features=WebRtcHideLocalIpsWithMdns`).
+
 ## Data and outputs
 
 | Path | Data |

@@ -35,6 +35,10 @@ services:
       INFLUX_ORG: qoo
       INFLUX_BUCKET: qoo
       INFLUX_TOKEN: qoo-dev-token
+      WEBRTC_SOURCE_MODE: "${WEBRTC_SOURCE_MODE:-reference}"
+      WEBRTC_RECORDINGS_DIR: /webrtc-recordings
+      WEBRTC_REFERENCE_DIR: /webrtc-reference
+      WEBRTC_CACHE_DIR: /webrtc-cache
     networks:
       lan-net:
         ipv4_address: 172.28.0.10
@@ -44,6 +48,10 @@ services:
       - ./data/pcap:/pcap
       - ./profiles:/qoo-profiles
       - ./data/wg-keys:/etc/wireguard
+      - ./data/webrtc/recordings:/webrtc-recordings
+      - ./browser/reference:/webrtc-reference:ro
+      - ./data/webrtc/cache:/webrtc-cache
+      - ./browser:/web-ui:ro
     ports:
       - "127.0.0.1:9000:9000"
       - "127.0.0.1:51820:51820/udp"
@@ -129,6 +137,8 @@ services:
       - "127.0.0.1:8080:8080"
     depends_on:
       - gateway
+    volumes:
+      - ./control:/srv
     restart: unless-stopped
 
   browser:
@@ -146,6 +156,7 @@ services:
     volumes:
       - browser-config:/config
       - ./data/libreqos:/data/libreqos
+      - ./browser/reference:/reference:ro
     ports:
       - "127.0.0.1:5800:3000"
     depends_on:

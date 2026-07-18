@@ -556,7 +556,7 @@
             "type": "influxdb",
             "uid": "influxdb"
           },
-          "query": "import \"strings\"\nsel = ${sources:json}\nenabledPercentiles = strings.split(v: \"${qooSelLatencyPercentilesCsv}\", t: \",\")\nrollingWindow = duration(v: \"${qooRollingWindow}\")\n\npassiveOn = contains(value: \"passive\", set: sel)\npingOn = contains(value: \"active-ping\", set: sel)\niperfOn = contains(value: \"active-iperf3\", set: sel)\ngodashOn = contains(value: \"active-godash\", set: sel)\n\ncomponentScore = (measured, lower, upper) => {\n  m = 1.0 - (measured - lower) / (upper - lower)\n  clamped = if m < 0.0 then 0.0 else if m > 1.0 then 1.0 else m\n  return clamped * 100.0\n}\n\nlatencyBase = union(tables: [\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_rtt_ms\" and r._field == \"value\" and r.mode == \"passive\")\n    |> filter(fn: (r) => passiveOn)\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_ping_sample_rtt_ms\" and r._field == \"value\")\n    |> filter(fn: (r) => pingOn)\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_rtt_ms\" and r._field == \"value\" and r.mode == \"active\" and r.bandwidth == \"false\")\n    |> filter(fn: (r) => godashOn)\n    |> keep(columns: [\"_time\", \"_value\"])\n])\n\nmkLatency = (q, lower, upper, label) =>\n  latencyBase\n    |> window(every: 5s, period: rollingWindow)\n    |> quantile(q: q, method: \"exact_selector\")\n    |> duplicate(column: \"_stop\", as: \"_time\")\n    |> window(every: inf)\n    |> keep(columns: [\"_time\", \"_value\"])\n    |> map(fn: (r) => ({_time: r._time, _value: componentScore(measured: r._value, lower: lower, upper: upper), label: label}))\n\nlatencyRowsAll = union(tables: [\n  mkLatency(q: 0.50, lower: float(v: ${qooSelLatencyP50Lower}), upper: float(v: ${qooSelLatencyP50Upper}), label: \"Latency P50 QoO\"),\n  mkLatency(q: 0.95, lower: float(v: ${qooSelLatencyP95Lower}), upper: float(v: ${qooSelLatencyP95Upper}), label: \"Latency P95 QoO\"),\n  mkLatency(q: 0.99, lower: float(v: ${qooSelLatencyP99Lower}), upper: float(v: ${qooSelLatencyP99Upper}), label: \"Latency P99 QoO\")\n])\n\nlatencyRows = latencyRowsAll\n  |> filter(fn: (r) =>\n    (r.label == \"Latency P50 QoO\" and contains(value: \"p50\", set: enabledPercentiles)) or\n    (r.label == \"Latency P95 QoO\" and contains(value: \"p95\", set: enabledPercentiles)) or\n    (r.label == \"Latency P99 QoO\" and contains(value: \"p99\", set: enabledPercentiles))\n  )\n\nlossBase = union(tables: [\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_loss_ratio\" and r.mode == \"passive\")\n    |> filter(fn: (r) => passiveOn)\n    |> pivot(rowKey: [\"_time\", \"flow\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n    |> filter(fn: (r) => r.packets >= 0.0)\n    |> rename(columns: {value: \"_value\"})\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_loss_ratio\" and r._field == \"value\" and r.mode == \"active\" and r.bandwidth == \"true\")\n    |> filter(fn: (r) => pingOn)\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_loss_ratio\" and r._field == \"value\" and r.mode == \"active\" and r.bandwidth == \"false\")\n    |> filter(fn: (r) => godashOn)\n    |> keep(columns: [\"_time\", \"_value\"])\n])\n\nlossRow = lossBase\n  |> window(every: 5s, period: rollingWindow)\n  |> mean()\n  |> duplicate(column: \"_stop\", as: \"_time\")\n  |> window(every: inf)\n  |> keep(columns: [\"_time\", \"_value\"])\n  |> map(fn: (r) => ({_time: r._time, _value: componentScore(measured: r._value, lower: float(v: ${qooSelLossLower}), upper: float(v: ${qooSelLossUpper})), label: \"Loss QoO\"}))\n\nthroughputBase = union(tables: [\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_throughput_mbps\" and r.mode == \"passive\")\n    |> filter(fn: (r) => passiveOn)\n    |> pivot(rowKey: [\"_time\", \"flow\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n    |> filter(fn: (r) => r.value >= 0.0 and r.packets >= 0.0)\n    |> rename(columns: {value: \"_value\"})\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_throughput_mbps\" and r._field == \"value\" and r.mode == \"active\" and r.bandwidth == \"true\")\n    |> filter(fn: (r) => iperfOn)\n    |> keep(columns: [\"_time\", \"_value\"])\n])\n\nthroughputRow = throughputBase\n  |> window(every: 5s, period: rollingWindow)\n  |> min()\n  |> duplicate(column: \"_stop\", as: \"_time\")\n  |> window(every: inf)\n  |> keep(columns: [\"_time\", \"_value\"])\n  |> map(fn: (r) => ({_time: r._time, _value: if r._value >= float(v: ${qooSelMinThroughputMbps}) then 100.0 else 0.0, label: \"Throughput QoO\"}))\n\ncomponentRows = union(tables: [latencyRows, lossRow, throughputRow])\n\noverallRow = componentRows\n  |> group(columns: [\"_time\"])\n  |> min(column: \"_value\")\n  |> map(fn: (r) => ({_time: r._time, _value: r._value, label: \"Overall QoO\"}))\n\noverallRow\n  |> keep(columns: [\"_time\", \"_value\"])\n  |> group()\n  |> sort(columns: [\"_time\"])\n  |> last()",
+          "query": "import \"strings\"\nsel = ${sources:json}\nenabledPercentiles = strings.split(v: \"${qooSelLatencyPercentilesCsv}\", t: \",\")\nrollingWindow = duration(v: \"${qooRollingWindow}\")\n\npassiveOn = contains(value: \"passive\", set: sel)\npingOn = contains(value: \"active-ping\", set: sel)\niperfOn = contains(value: \"active-iperf3\", set: sel)\ngodashOn = contains(value: \"active-godash\", set: sel)\nwebrtcOn = contains(value: \"active-webrtc\", set: sel)\n\ncomponentScore = (measured, lower, upper) => {\n  m = 1.0 - (measured - lower) / (upper - lower)\n  clamped = if m < 0.0 then 0.0 else if m > 1.0 then 1.0 else m\n  return clamped * 100.0\n}\n\nlatencyBase = union(tables: [\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_rtt_ms\" and r._field == \"value\" and r.mode == \"passive\")\n    |> filter(fn: (r) => passiveOn)\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_ping_sample_rtt_ms\" and r._field == \"value\")\n    |> filter(fn: (r) => pingOn)\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_rtt_ms\" and r._field == \"value\" and r.mode == \"active\" and r.bandwidth == \"false\")\n    |> filter(fn: (r) => godashOn)\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_webrtc_receiver\" and r._field == \"rtt_ms\")\n    |> filter(fn: (r) => webrtcOn)\n    |> keep(columns: [\"_time\", \"_value\"])\n])\n\nmkLatency = (q, lower, upper, label) =>\n  latencyBase\n    |> window(every: 5s, period: rollingWindow)\n    |> quantile(q: q, method: \"exact_selector\")\n    |> duplicate(column: \"_stop\", as: \"_time\")\n    |> window(every: inf)\n    |> keep(columns: [\"_time\", \"_value\"])\n    |> map(fn: (r) => ({_time: r._time, _value: componentScore(measured: r._value, lower: lower, upper: upper), label: label}))\n\nlatencyRowsAll = union(tables: [\n  mkLatency(q: 0.50, lower: float(v: ${qooSelLatencyP50Lower}), upper: float(v: ${qooSelLatencyP50Upper}), label: \"Latency P50 QoO\"),\n  mkLatency(q: 0.95, lower: float(v: ${qooSelLatencyP95Lower}), upper: float(v: ${qooSelLatencyP95Upper}), label: \"Latency P95 QoO\"),\n  mkLatency(q: 0.99, lower: float(v: ${qooSelLatencyP99Lower}), upper: float(v: ${qooSelLatencyP99Upper}), label: \"Latency P99 QoO\")\n])\n\nlatencyRows = latencyRowsAll\n  |> filter(fn: (r) =>\n    (r.label == \"Latency P50 QoO\" and contains(value: \"p50\", set: enabledPercentiles)) or\n    (r.label == \"Latency P95 QoO\" and contains(value: \"p95\", set: enabledPercentiles)) or\n    (r.label == \"Latency P99 QoO\" and contains(value: \"p99\", set: enabledPercentiles))\n  )\n\nlossBase = union(tables: [\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_loss_ratio\" and r.mode == \"passive\")\n    |> filter(fn: (r) => passiveOn)\n    |> pivot(rowKey: [\"_time\", \"flow\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n    |> filter(fn: (r) => r.packets >= 0.0)\n    |> rename(columns: {value: \"_value\"})\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_loss_ratio\" and r._field == \"value\" and r.mode == \"active\" and r.bandwidth == \"true\")\n    |> filter(fn: (r) => pingOn)\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_loss_ratio\" and r._field == \"value\" and r.mode == \"active\" and r.bandwidth == \"false\")\n    |> filter(fn: (r) => godashOn)\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_webrtc_receiver\" and (r._field == \"packets_lost\" or r._field == \"packets_received\"))\n    |> filter(fn: (r) => webrtcOn)\n    |> derivative(unit: 1s, nonNegative: true)\n    |> pivot(rowKey: [\"_time\", \"session\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n    |> map(fn: (r) => ({_time: r._time, _value: if (r.packets_lost + r.packets_received) > 0.0 then r.packets_lost / (r.packets_lost + r.packets_received) else 0.0}))\n    |> keep(columns: [\"_time\", \"_value\"])\n    |> movingAverage(n: 10)\n    |> keep(columns: [\"_time\", \"_value\"])\n])\n\nlossRow = lossBase\n  |> window(every: 5s, period: rollingWindow)\n  |> mean()\n  |> duplicate(column: \"_stop\", as: \"_time\")\n  |> window(every: inf)\n  |> keep(columns: [\"_time\", \"_value\"])\n  |> map(fn: (r) => ({_time: r._time, _value: componentScore(measured: r._value, lower: float(v: ${qooSelLossLower}), upper: float(v: ${qooSelLossUpper})), label: \"Loss QoO\"}))\n\nthroughputBase = union(tables: [\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_throughput_mbps\" and r.mode == \"passive\")\n    |> filter(fn: (r) => passiveOn)\n    |> pivot(rowKey: [\"_time\", \"flow\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n    |> filter(fn: (r) => r.value >= 0.0 and r.packets >= 0.0)\n    |> rename(columns: {value: \"_value\"})\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_throughput_mbps\" and r._field == \"value\" and r.mode == \"active\" and r.bandwidth == \"true\")\n    |> filter(fn: (r) => iperfOn)\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_webrtc_receiver\" and r._field == \"bytes_received\")\n    |> filter(fn: (r) => webrtcOn)\n    |> derivative(unit: 1s, nonNegative: true)\n    |> map(fn: (r) => ({_time: r._time, _value: r._value * 8.0 / 1000000.0}))\n    |> keep(columns: [\"_time\", \"_value\"])\n])\n\nthroughputRow = throughputBase\n  |> window(every: 5s, period: rollingWindow)\n  |> min()\n  |> duplicate(column: \"_stop\", as: \"_time\")\n  |> window(every: inf)\n  |> keep(columns: [\"_time\", \"_value\"])\n  |> map(fn: (r) => ({_time: r._time, _value: if r._value >= float(v: ${qooSelMinThroughputMbps}) then 100.0 else 0.0, label: \"Throughput QoO\"}))\n\ncomponentRows = union(tables: [latencyRows, lossRow, throughputRow])\n\noverallRow = componentRows\n  |> group(columns: [\"_time\"])\n  |> min(column: \"_value\")\n  |> map(fn: (r) => ({_time: r._time, _value: r._value, label: \"Overall QoO\"}))\n\noverallRow\n  |> keep(columns: [\"_time\", \"_value\"])\n  |> group()\n  |> sort(columns: [\"_time\"])\n  |> last()\n\n",
           "refId": "A"
         }
       ]
@@ -634,7 +634,7 @@
             "type": "influxdb",
             "uid": "influxdb"
           },
-          "query": "import \"strings\"\nsel = ${sources:json}\nenabledPercentiles = strings.split(v: \"${qooSelLatencyPercentilesCsv}\", t: \",\")\nrollingWindow = duration(v: \"${qooRollingWindow}\")\n\npassiveOn = contains(value: \"passive\", set: sel)\npingOn = contains(value: \"active-ping\", set: sel)\niperfOn = contains(value: \"active-iperf3\", set: sel)\ngodashOn = contains(value: \"active-godash\", set: sel)\n\ncomponentScore = (measured, lower, upper) => {\n  m = 1.0 - (measured - lower) / (upper - lower)\n  clamped = if m < 0.0 then 0.0 else if m > 1.0 then 1.0 else m\n  return clamped * 100.0\n}\n\nlatencyBase = union(tables: [\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_rtt_ms\" and r._field == \"value\" and r.mode == \"passive\")\n    |> filter(fn: (r) => passiveOn)\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_ping_sample_rtt_ms\" and r._field == \"value\")\n    |> filter(fn: (r) => pingOn)\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_rtt_ms\" and r._field == \"value\" and r.mode == \"active\" and r.bandwidth == \"false\")\n    |> filter(fn: (r) => godashOn)\n    |> keep(columns: [\"_time\", \"_value\"])\n])\n\nmkLatency = (q, lower, upper, label) =>\n  latencyBase\n    |> window(every: 5s, period: rollingWindow)\n    |> quantile(q: q, method: \"exact_selector\")\n    |> duplicate(column: \"_stop\", as: \"_time\")\n    |> window(every: inf)\n    |> keep(columns: [\"_time\", \"_value\"])\n    |> map(fn: (r) => ({_time: r._time, _value: componentScore(measured: r._value, lower: lower, upper: upper), label: label}))\n\nlatencyRowsAll = union(tables: [\n  mkLatency(q: 0.50, lower: float(v: ${qooSelLatencyP50Lower}), upper: float(v: ${qooSelLatencyP50Upper}), label: \"Latency P50 QoO\"),\n  mkLatency(q: 0.95, lower: float(v: ${qooSelLatencyP95Lower}), upper: float(v: ${qooSelLatencyP95Upper}), label: \"Latency P95 QoO\"),\n  mkLatency(q: 0.99, lower: float(v: ${qooSelLatencyP99Lower}), upper: float(v: ${qooSelLatencyP99Upper}), label: \"Latency P99 QoO\")\n])\n\nlatencyRows = latencyRowsAll\n  |> filter(fn: (r) =>\n    (r.label == \"Latency P50 QoO\" and contains(value: \"p50\", set: enabledPercentiles)) or\n    (r.label == \"Latency P95 QoO\" and contains(value: \"p95\", set: enabledPercentiles)) or\n    (r.label == \"Latency P99 QoO\" and contains(value: \"p99\", set: enabledPercentiles))\n  )\n\nlossBase = union(tables: [\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_loss_ratio\" and r.mode == \"passive\")\n    |> filter(fn: (r) => passiveOn)\n    |> pivot(rowKey: [\"_time\", \"flow\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n    |> filter(fn: (r) => r.packets >= 0.0)\n    |> rename(columns: {value: \"_value\"})\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_loss_ratio\" and r._field == \"value\" and r.mode == \"active\" and r.bandwidth == \"true\")\n    |> filter(fn: (r) => pingOn)\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_loss_ratio\" and r._field == \"value\" and r.mode == \"active\" and r.bandwidth == \"false\")\n    |> filter(fn: (r) => godashOn)\n    |> keep(columns: [\"_time\", \"_value\"])\n])\n\nlossRow = lossBase\n  |> window(every: 5s, period: rollingWindow)\n  |> mean()\n  |> duplicate(column: \"_stop\", as: \"_time\")\n  |> window(every: inf)\n  |> keep(columns: [\"_time\", \"_value\"])\n  |> map(fn: (r) => ({_time: r._time, _value: componentScore(measured: r._value, lower: float(v: ${qooSelLossLower}), upper: float(v: ${qooSelLossUpper})), label: \"Loss QoO\"}))\n\nthroughputBase = union(tables: [\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_throughput_mbps\" and r.mode == \"passive\")\n    |> filter(fn: (r) => passiveOn)\n    |> pivot(rowKey: [\"_time\", \"flow\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n    |> filter(fn: (r) => r.value >= 0.0 and r.packets >= 0.0)\n    |> rename(columns: {value: \"_value\"})\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_throughput_mbps\" and r._field == \"value\" and r.mode == \"active\" and r.bandwidth == \"true\")\n    |> filter(fn: (r) => iperfOn)\n    |> keep(columns: [\"_time\", \"_value\"])\n])\n\nthroughputRow = throughputBase\n  |> window(every: 5s, period: rollingWindow)\n  |> min()\n  |> duplicate(column: \"_stop\", as: \"_time\")\n  |> window(every: inf)\n  |> keep(columns: [\"_time\", \"_value\"])\n  |> map(fn: (r) => ({_time: r._time, _value: if r._value >= float(v: ${qooSelMinThroughputMbps}) then 100.0 else 0.0, label: \"Throughput QoO\"}))\n\ncomponentRows = union(tables: [latencyRows, lossRow, throughputRow])\n\noverallRow = componentRows\n  |> group(columns: [\"_time\"])\n  |> min(column: \"_value\")\n  |> map(fn: (r) => ({_time: r._time, _value: r._value, label: \"Overall QoO\"}))\n\nunion(tables: [componentRows, overallRow])\n  |> map(fn: (r) => ({_time: r._time, _value: r._value, _field: r.label}))\n  |> group(columns: [\"_field\"])\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])",
+          "query": "import \"strings\"\nsel = ${sources:json}\nenabledPercentiles = strings.split(v: \"${qooSelLatencyPercentilesCsv}\", t: \",\")\nrollingWindow = duration(v: \"${qooRollingWindow}\")\n\npassiveOn = contains(value: \"passive\", set: sel)\npingOn = contains(value: \"active-ping\", set: sel)\niperfOn = contains(value: \"active-iperf3\", set: sel)\ngodashOn = contains(value: \"active-godash\", set: sel)\nwebrtcOn = contains(value: \"active-webrtc\", set: sel)\n\ncomponentScore = (measured, lower, upper) => {\n  m = 1.0 - (measured - lower) / (upper - lower)\n  clamped = if m < 0.0 then 0.0 else if m > 1.0 then 1.0 else m\n  return clamped * 100.0\n}\n\nlatencyBase = union(tables: [\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_rtt_ms\" and r._field == \"value\" and r.mode == \"passive\")\n    |> filter(fn: (r) => passiveOn)\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_ping_sample_rtt_ms\" and r._field == \"value\")\n    |> filter(fn: (r) => pingOn)\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_rtt_ms\" and r._field == \"value\" and r.mode == \"active\" and r.bandwidth == \"false\")\n    |> filter(fn: (r) => godashOn)\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_webrtc_receiver\" and r._field == \"rtt_ms\")\n    |> filter(fn: (r) => webrtcOn)\n    |> keep(columns: [\"_time\", \"_value\"])\n])\n\nmkLatency = (q, lower, upper, label) =>\n  latencyBase\n    |> window(every: 5s, period: rollingWindow)\n    |> quantile(q: q, method: \"exact_selector\")\n    |> duplicate(column: \"_stop\", as: \"_time\")\n    |> window(every: inf)\n    |> keep(columns: [\"_time\", \"_value\"])\n    |> map(fn: (r) => ({_time: r._time, _value: componentScore(measured: r._value, lower: lower, upper: upper), label: label}))\n\nlatencyRowsAll = union(tables: [\n  mkLatency(q: 0.50, lower: float(v: ${qooSelLatencyP50Lower}), upper: float(v: ${qooSelLatencyP50Upper}), label: \"Latency P50 QoO\"),\n  mkLatency(q: 0.95, lower: float(v: ${qooSelLatencyP95Lower}), upper: float(v: ${qooSelLatencyP95Upper}), label: \"Latency P95 QoO\"),\n  mkLatency(q: 0.99, lower: float(v: ${qooSelLatencyP99Lower}), upper: float(v: ${qooSelLatencyP99Upper}), label: \"Latency P99 QoO\")\n])\n\nlatencyRows = latencyRowsAll\n  |> filter(fn: (r) =>\n    (r.label == \"Latency P50 QoO\" and contains(value: \"p50\", set: enabledPercentiles)) or\n    (r.label == \"Latency P95 QoO\" and contains(value: \"p95\", set: enabledPercentiles)) or\n    (r.label == \"Latency P99 QoO\" and contains(value: \"p99\", set: enabledPercentiles))\n  )\n\nlossBase = union(tables: [\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_loss_ratio\" and r.mode == \"passive\")\n    |> filter(fn: (r) => passiveOn)\n    |> pivot(rowKey: [\"_time\", \"flow\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n    |> filter(fn: (r) => r.packets >= 0.0)\n    |> rename(columns: {value: \"_value\"})\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_loss_ratio\" and r._field == \"value\" and r.mode == \"active\" and r.bandwidth == \"true\")\n    |> filter(fn: (r) => pingOn)\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_loss_ratio\" and r._field == \"value\" and r.mode == \"active\" and r.bandwidth == \"false\")\n    |> filter(fn: (r) => godashOn)\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_webrtc_receiver\" and (r._field == \"packets_lost\" or r._field == \"packets_received\"))\n    |> filter(fn: (r) => webrtcOn)\n    |> derivative(unit: 1s, nonNegative: true)\n    |> pivot(rowKey: [\"_time\", \"session\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n    |> map(fn: (r) => ({_time: r._time, _value: if (r.packets_lost + r.packets_received) > 0.0 then r.packets_lost / (r.packets_lost + r.packets_received) else 0.0}))\n    |> keep(columns: [\"_time\", \"_value\"])\n    |> movingAverage(n: 10)\n    |> keep(columns: [\"_time\", \"_value\"])\n])\n\nlossRow = lossBase\n  |> window(every: 5s, period: rollingWindow)\n  |> mean()\n  |> duplicate(column: \"_stop\", as: \"_time\")\n  |> window(every: inf)\n  |> keep(columns: [\"_time\", \"_value\"])\n  |> map(fn: (r) => ({_time: r._time, _value: componentScore(measured: r._value, lower: float(v: ${qooSelLossLower}), upper: float(v: ${qooSelLossUpper})), label: \"Loss QoO\"}))\n\nthroughputBase = union(tables: [\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_throughput_mbps\" and r.mode == \"passive\")\n    |> filter(fn: (r) => passiveOn)\n    |> pivot(rowKey: [\"_time\", \"flow\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n    |> filter(fn: (r) => r.value >= 0.0 and r.packets >= 0.0)\n    |> rename(columns: {value: \"_value\"})\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_throughput_mbps\" and r._field == \"value\" and r.mode == \"active\" and r.bandwidth == \"true\")\n    |> filter(fn: (r) => iperfOn)\n    |> keep(columns: [\"_time\", \"_value\"]),\n  from(bucket: \"qoo\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"qoo_webrtc_receiver\" and r._field == \"bytes_received\")\n    |> filter(fn: (r) => webrtcOn)\n    |> derivative(unit: 1s, nonNegative: true)\n    |> map(fn: (r) => ({_time: r._time, _value: r._value * 8.0 / 1000000.0}))\n    |> keep(columns: [\"_time\", \"_value\"])\n])\n\nthroughputRow = throughputBase\n  |> window(every: 5s, period: rollingWindow)\n  |> min()\n  |> duplicate(column: \"_stop\", as: \"_time\")\n  |> window(every: inf)\n  |> keep(columns: [\"_time\", \"_value\"])\n  |> map(fn: (r) => ({_time: r._time, _value: if r._value >= float(v: ${qooSelMinThroughputMbps}) then 100.0 else 0.0, label: \"Throughput QoO\"}))\n\ncomponentRows = union(tables: [latencyRows, lossRow, throughputRow])\n\noverallRow = componentRows\n  |> group(columns: [\"_time\"])\n  |> min(column: \"_value\")\n  |> map(fn: (r) => ({_time: r._time, _value: r._value, label: \"Overall QoO\"}))\n\nunion(tables: [componentRows, overallRow])\n  |> map(fn: (r) => ({_time: r._time, _value: r._value, _field: r.label}))\n  |> group(columns: [\"_field\"])\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])\n\n",
           "refId": "A"
         }
       ]
@@ -1227,7 +1227,6 @@
         }
       ]
     },
-
     {
       "id": 125,
       "type": "row",
@@ -1498,6 +1497,123 @@
           },
           "query": "import \"array\"\nimport \"math\"\n\nstartMs = float(v: \"${nqLatencyWindowStartMs}\")\n\nbins = array.from(rows: [\n  {bin_start: startMs + 0.0}, {bin_start: startMs + 5.0}, {bin_start: startMs + 10.0}, {bin_start: startMs + 15.0},\n  {bin_start: startMs + 20.0}, {bin_start: startMs + 25.0}, {bin_start: startMs + 30.0}, {bin_start: startMs + 35.0},\n  {bin_start: startMs + 40.0}, {bin_start: startMs + 45.0}, {bin_start: startMs + 50.0}, {bin_start: startMs + 55.0},\n  {bin_start: startMs + 60.0}, {bin_start: startMs + 65.0}, {bin_start: startMs + 70.0}, {bin_start: startMs + 75.0},\n  {bin_start: startMs + 80.0}, {bin_start: startMs + 85.0}, {bin_start: startMs + 90.0}, {bin_start: startMs + 95.0}\n])\n  |> map(fn: (r) => ({r with bin: string(v: int(v: r.bin_start)) + \"-\" + string(v: int(v: r.bin_start) + 5)}))\n\nzeros = union(tables: [\n  bins |> map(fn: (r) => ({series: \"lud_foreign_h2_req_resp\", bin_start: r.bin_start, bin: r.bin, count: 0.0})),\n  bins |> map(fn: (r) => ({series: \"lud_foreign_tcp_handshake_443\", bin_start: r.bin_start, bin: r.bin, count: 0.0})),\n  bins |> map(fn: (r) => ({series: \"lud_foreign_tls_handshake\", bin_start: r.bin_start, bin: r.bin, count: 0.0})),\n  bins |> map(fn: (r) => ({series: \"lud_self_h2_req_resp\", bin_start: r.bin_start, bin: r.bin, count: 0.0}))\n])\n\ncounts = from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_network_quality_latency_sample_ms\" and r._field == \"value\")\n  |> filter(fn: (r) => r.mode == \"active\" and r.source == \"network-quality\" and r.state == \"loaded\")\n  |> filter(fn: (r) => r._value >= startMs and r._value < startMs + 100.0)\n  |> map(fn: (r) => ({series: r.series, bin_start: float(v: int(v: math.floor(x: r._value / 5.0) * 5.0)), count: 1.0}))\n  |> group(columns: [\"series\", \"bin_start\"])\n  |> sum(column: \"count\")\n  |> map(fn: (r) => ({series: r.series, bin_start: r.bin_start, bin: string(v: int(v: r.bin_start)) + \"-\" + string(v: int(v: r.bin_start) + 5), count: r.count}))\n\nunion(tables: [zeros, counts])\n  |> group(columns: [\"series\", \"bin_start\", \"bin\"])\n  |> max(column: \"count\")\n  |> group()\n  |> pivot(rowKey: [\"bin_start\", \"bin\"], columnKey: [\"series\"], valueColumn: \"count\")\n  |> sort(columns: [\"bin_start\"])\n  |> keep(columns: [\"bin\", \"lud_foreign_h2_req_resp\", \"lud_foreign_tcp_handshake_443\", \"lud_foreign_tls_handshake\", \"lud_self_h2_req_resp\"])",
           "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 132,
+      "type": "row",
+      "title": "Active - WebRTC receiver",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 91
+      }
+    },
+    {
+      "id": 133,
+      "type": "timeseries",
+      "title": "WebRTC RTT",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 92
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "displayName": "${__field.labels.session}"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_webrtc_receiver\" and r._field == \"rtt_ms\")\n  |> keep(columns: [\"_time\", \"_value\", \"session\"])"
+        }
+      ]
+    },
+    {
+      "id": 134,
+      "type": "timeseries",
+      "title": "WebRTC Packet Loss Rate (Per-Second)",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 92
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 0.2,
+          "displayName": "${__field.labels.session} ${__field.labels.series}"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "lost = from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_webrtc_receiver\" and r._field == \"packets_lost\")\n  |> derivative(unit: 1s, nonNegative: true)\n  |> keep(columns: [\"_time\", \"_value\", \"session\"])\n  |> rename(columns: {_value: \"lost_ps\"})\n\nrecv = from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_webrtc_receiver\" and r._field == \"packets_received\")\n  |> derivative(unit: 1s, nonNegative: true)\n  |> keep(columns: [\"_time\", \"_value\", \"session\"])\n  |> rename(columns: {_value: \"recv_ps\"})\n\njoin(tables: {lost: lost, recv: recv}, on: [\"_time\", \"session\"])\n  |> map(fn: (r) => ({r with _value: if (r.lost_ps + r.recv_ps) > 0.0 then r.lost_ps / (r.lost_ps + r.recv_ps) else 0.0, series: \"per-second\"}))\n  |> keep(columns: [\"_time\", \"_value\", \"session\", \"series\"])"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "lost = from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_webrtc_receiver\" and r._field == \"packets_lost\")\n  |> derivative(unit: 1s, nonNegative: true)\n  |> keep(columns: [\"_time\", \"_value\", \"session\"])\n  |> rename(columns: {_value: \"lost_ps\"})\n\nrecv = from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_webrtc_receiver\" and r._field == \"packets_received\")\n  |> derivative(unit: 1s, nonNegative: true)\n  |> keep(columns: [\"_time\", \"_value\", \"session\"])\n  |> rename(columns: {_value: \"recv_ps\"})\n\njoin(tables: {lost: lost, recv: recv}, on: [\"_time\", \"session\"])\n  |> map(fn: (r) => ({r with _value: if (r.lost_ps + r.recv_ps) > 0.0 then r.lost_ps / (r.lost_ps + r.recv_ps) else 0.0}))\n  |> keep(columns: [\"_time\", \"_value\", \"session\"])\n  |> movingAverage(n: 10)\n  |> map(fn: (r) => ({r with series: \"10s-avg\"}))\n  |> keep(columns: [\"_time\", \"_value\", \"session\", \"series\"])"
+        }
+      ]
+    },
+    {
+      "id": 135,
+      "type": "timeseries",
+      "title": "WebRTC Throughput (Per-Second)",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 92
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bps",
+          "displayName": "${__field.labels.session}"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "query": "from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_webrtc_receiver\" and r._field == \"bytes_received\")\n  |> derivative(unit: 1s, nonNegative: true)\n  |> map(fn: (r) => ({r with _value: r._value * 8.0}))\n  |> keep(columns: [\"_time\", \"_value\", \"session\"])"
         }
       ]
     }
@@ -1782,19 +1898,21 @@
         "label": "QoO score data sources",
         "multi": true,
         "includeAll": false,
-        "query": "passive : passive,active-ping : active-ping,active-iperf3 : active-iperf3,active-godash : active-godash",
+        "query": "passive : passive,active-ping : active-ping,active-iperf3 : active-iperf3,active-godash : active-godash,active-webrtc : active-webrtc",
         "current": {
           "text": [
             "passive",
             "active-ping",
             "active-iperf3",
-            "active-godash"
+            "active-godash",
+            "active-webrtc"
           ],
           "value": [
             "passive",
             "active-ping",
             "active-iperf3",
-            "active-godash"
+            "active-godash",
+            "active-webrtc"
           ]
         },
         "options": [
@@ -1816,6 +1934,11 @@
           {
             "text": "active-godash",
             "value": "active-godash",
+            "selected": true
+          },
+          {
+            "text": "active-webrtc",
+            "value": "active-webrtc",
             "selected": true
           }
         ]
