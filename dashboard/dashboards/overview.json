@@ -720,8 +720,51 @@
       },
       "fieldConfig": {
         "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "baseline": {
+                  "text": "baseline",
+                  "color": "#7EB26D"
+                },
+                "downloadWarmup": {
+                  "text": "downloadWarmup",
+                  "color": "#6ED0E0"
+                },
+                "download": {
+                  "text": "download",
+                  "color": "#1F78C1"
+                },
+                "uploadWarmup": {
+                  "text": "uploadWarmup",
+                  "color": "#EAB839"
+                },
+                "upload": {
+                  "text": "upload",
+                  "color": "#EF843C"
+                },
+                "bidirectional": {
+                  "text": "bidirectional",
+                  "color": "#BA43A9"
+                },
+                "recovery": {
+                  "text": "recovery",
+                  "color": "#705DA0"
+                },
+                "complete": {
+                  "text": "complete",
+                  "color": "#999999"
+                },
+                "stopped": {
+                  "text": " ",
+                  "color": "#00000000"
+                }
+              }
+            }
+          ],
           "color": {
-            "mode": "palette-classic"
+            "mode": "fixed"
           }
         },
         "overrides": []
@@ -762,7 +805,118 @@
           },
           "displayName": "${__field.labels.label}"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*phase=\\\"baseline\\\".*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#7EB26D"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*phase=\\\"downloadWarmup\\\".*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#6ED0E0"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*phase=\\\"download\\\".*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#1F78C1"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*phase=\\\"uploadWarmup\\\".*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#EAB839"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*phase=\\\"upload\\\".*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#EF843C"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*phase=\\\"bidirectional\\\".*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#BA43A9"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*phase=\\\"recovery\\\".*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#705DA0"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": false
+        }
       },
       "targets": [
         {
@@ -770,7 +924,7 @@
             "type": "influxdb",
             "uid": "influxdb"
           },
-          "query": "from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_libreqos_rtt_ms\" and r._field == \"value\")\n  |> filter(fn: (r) => r.mode == \"active\" and r.source == \"libreqos\")\n  |> map(fn: (r) => ({r with label: \"LibreQoS (#\" + (if exists r.run then r.run else \"?\") + \")\"}))\n  |> group(columns: [\"label\"])\n  |> keep(columns: [\"_time\", \"_value\", \"label\"])",
+          "query": "from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_libreqos_rtt_ms\" and r._field == \"value\")\n  |> filter(fn: (r) => r.mode == \"active\" and r.source == \"libreqos\")\n  |> map(fn: (r) => ({r with label: \"LibreQoS (#\" + (if exists r.run then r.run else \"?\") + \")\"}))\n  |> group(columns: [\"label\", \"phase\"])\n  |> keep(columns: [\"_time\", \"_value\", \"label\", \"phase\"])",
           "refId": "A"
         }
       ]
@@ -800,7 +954,118 @@
           },
           "displayName": "${__field.labels.label}"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*phase=\\\"baseline\\\".*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#7EB26D"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*phase=\\\"downloadWarmup\\\".*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#6ED0E0"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*phase=\\\"download\\\".*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#1F78C1"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*phase=\\\"uploadWarmup\\\".*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#EAB839"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*phase=\\\"upload\\\".*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#EF843C"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*phase=\\\"bidirectional\\\".*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#BA43A9"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*phase=\\\"recovery\\\".*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#705DA0"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": false
+        }
       },
       "targets": [
         {
@@ -808,7 +1073,7 @@
             "type": "influxdb",
             "uid": "influxdb"
           },
-          "query": "from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_libreqos_throughput_mbps\" and r._field == \"value\")\n  |> filter(fn: (r) => r.mode == \"active\" and r.source == \"libreqos\" and r.direction == \"download\")\n  |> map(fn: (r) => ({r with label: \"Download (#\" + (if exists r.run then r.run else \"?\") + \")\"}))\n  |> group(columns: [\"label\"])\n  |> keep(columns: [\"_time\", \"_value\", \"label\"])",
+          "query": "from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_libreqos_throughput_mbps\" and r._field == \"value\")\n  |> filter(fn: (r) => r.mode == \"active\" and r.source == \"libreqos\" and r.direction == \"download\")\n  |> map(fn: (r) => ({r with label: \"Download (#\" + (if exists r.run then r.run else \"?\") + \")\"}))\n  |> group(columns: [\"label\", \"phase\"])\n  |> keep(columns: [\"_time\", \"_value\", \"label\", \"phase\"])",
           "refId": "A"
         }
       ]
@@ -838,7 +1103,118 @@
           },
           "displayName": "${__field.labels.label}"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*phase=\\\"baseline\\\".*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#7EB26D"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*phase=\\\"downloadWarmup\\\".*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#6ED0E0"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*phase=\\\"download\\\".*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#1F78C1"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*phase=\\\"uploadWarmup\\\".*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#EAB839"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*phase=\\\"upload\\\".*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#EF843C"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*phase=\\\"bidirectional\\\".*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#BA43A9"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*phase=\\\"recovery\\\".*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#705DA0"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": false
+        }
       },
       "targets": [
         {
@@ -846,7 +1222,7 @@
             "type": "influxdb",
             "uid": "influxdb"
           },
-          "query": "from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_libreqos_throughput_mbps\" and r._field == \"value\")\n  |> filter(fn: (r) => r.mode == \"active\" and r.source == \"libreqos\" and r.direction == \"upload\")\n  |> map(fn: (r) => ({r with label: \"Upload (#\" + (if exists r.run then r.run else \"?\") + \")\"}))\n  |> group(columns: [\"label\"])\n  |> keep(columns: [\"_time\", \"_value\", \"label\"])",
+          "query": "from(bucket: \"qoo\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"qoo_libreqos_throughput_mbps\" and r._field == \"value\")\n  |> filter(fn: (r) => r.mode == \"active\" and r.source == \"libreqos\" and r.direction == \"upload\")\n  |> map(fn: (r) => ({r with label: \"Upload (#\" + (if exists r.run then r.run else \"?\") + \")\"}))\n  |> group(columns: [\"label\", \"phase\"])\n  |> keep(columns: [\"_time\", \"_value\", \"label\", \"phase\"])",
           "refId": "A"
         }
       ]

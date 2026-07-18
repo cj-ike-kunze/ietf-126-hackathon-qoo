@@ -55,6 +55,12 @@ jq -r \
   --argjson started "$started_at_ms" '
   [
     (.phases[]? | "qoo_libreqos_phase,source=libreqos,mode=active,bandwidth=true,run=\($run),profile=\($profile),session=\($session) value=\"\(.name)\" \((($started + (.startMs|tonumber)) * 1000000)|floor)"),
+    (if ((.phases | length) > 0) then
+      "qoo_libreqos_phase,source=libreqos,mode=active,bandwidth=true,run=\($run),profile=\($profile),session=\($session) value=\"complete\" \((($started + (.phases[-1].endMs|tonumber)) * 1000000)|floor)"
+    else empty end),
+    (if ((.phases | length) > 0) then
+      "qoo_libreqos_phase,source=libreqos,mode=active,bandwidth=true,run=\($run),profile=\($profile),session=\($session) value=\"stopped\" \((($started + (.phases[-1].endMs|tonumber) + 1) * 1000000)|floor)"
+    else empty end),
     (.latencySamples[]? | "qoo_libreqos_rtt_ms,source=libreqos,mode=active,bandwidth=true,run=\($run),profile=\($profile),session=\($session),phase=\(.phase),counted=\(.counted),sample_loss=\(.loss) value=\(.rttMs) \((($started + (.elapsedMs|tonumber)) * 1000000)|floor)"),
     (.throughputSamples[]? | "qoo_libreqos_throughput_mbps,source=libreqos,mode=active,bandwidth=true,run=\($run),profile=\($profile),session=\($session),phase=\(.phase),direction=\(.direction) value=\(.mbps) \((($started + (.elapsedMs|tonumber)) * 1000000)|floor)")
   ] | .[]
