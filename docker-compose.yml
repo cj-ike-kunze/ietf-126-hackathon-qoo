@@ -131,6 +131,41 @@ services:
       - gateway
     restart: unless-stopped
 
+  browser:
+    build: ./browser
+    shm_size: "2gb"
+    cap_add:
+      - NET_ADMIN
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      TZ: "UTC"
+    networks:
+      lan-net:
+        ipv4_address: 172.28.0.30
+    volumes:
+      - browser-config:/config
+      - ./data/libreqos:/data/libreqos
+    ports:
+      - "127.0.0.1:5800:3000"
+    depends_on:
+      - gateway
+    # Keep host/control-plane paths local (e.g. noVNC on :5800) while still
+    # routing internet-bound browser traffic through gateway netem.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        ORIG_GW="$$(ip route show default | awk 'NR==1{print $$3}')"
+        if [ -n "$$ORIG_GW" ]; then
+          ip route replace 10.0.0.0/8 via "$$ORIG_GW" dev eth0 || true
+          ip route replace 172.16.0.0/12 via "$$ORIG_GW" dev eth0 || true
+          ip route replace 192.168.0.0/16 via "$$ORIG_GW" dev eth0 || true
+        fi
+        ip route replace default via 172.28.0.10 dev eth0
+        exec /init
+    restart: unless-stopped
+
   libreqos-cli:
     platform: linux/amd64
     build: ./libreqos-cli
