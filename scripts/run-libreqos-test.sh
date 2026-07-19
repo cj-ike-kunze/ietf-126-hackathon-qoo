@@ -5,12 +5,61 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 . "$SCRIPT_DIR/lib-push-metrics.sh"
 
 script_name="$(basename "$0")"
-run_label="${1:-$(date +%Y%m%d-%H%M%S)}"
-runner_service="${2:-libreqos-cli}"
+run_label="$(date +%Y%m%d-%H%M%S)"
+runner_service="libreqos-cli"
+tui_mode=""
+
+positional_index=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --tui)
+      tui_mode="tui"
+      shift
+      ;;
+    --no-tui)
+      tui_mode=""
+      shift
+      ;;
+    --run-label)
+      run_label="${2:-}"
+      shift 2
+      ;;
+    --service)
+      runner_service="${2:-}"
+      shift 2
+      ;;
+    --help|-h)
+      cat <<USAGE
+Usage:
+  ./$script_name [run_label] [service] [tui]
+  ./$script_name --tui
+  ./$script_name --run-label LABEL --service SERVICE [--tui]
+USAGE
+      exit 0
+      ;;
+    *)
+      positional_index=$((positional_index + 1))
+      if [ "$positional_index" -eq 1 ]; then
+        run_label="$1"
+      elif [ "$positional_index" -eq 2 ]; then
+        runner_service="$1"
+      elif [ "$positional_index" -eq 3 ] && [ "$1" = "tui" ]; then
+        tui_mode="tui"
+      else
+        echo "[$script_name] ERROR: unknown argument: $1" >&2
+        exit 1
+      fi
+      shift
+      ;;
+  esac
+done
 
 # Usage:
-#   ./scripts/libreqos-test.sh [run_label] [service]
+#   ./scripts/libreqos-test.sh [run_label] [service] [tui]
+#   ./scripts/libreqos-test.sh --tui
+#   ./scripts/libreqos-test.sh --run-label LABEL --service SERVICE [--tui]
 # service defaults to libreqos-cli; use browser to run in full browser image.
+# set third arg to "tui" to enable the interactive TUI.
 
 host_run_dir="$SCRIPT_DIR/../data/libreqos/$run_label"
 container_run_dir="/data/libreqos/$run_label"
@@ -24,12 +73,18 @@ cat <<EOF
 [$script_name] Starting LibreQoS CLI run
   run_label: $run_label
   container service: $runner_service
+  tui mode: ${tui_mode:-off}
   host output dir: $host_run_dir
 EOF
 
+cli_tui_flag="--no-tui"
+if [ "$tui_mode" = "tui" ]; then
+  cli_tui_flag=""
+fi
+
 # Run the CLI in the requested container service; samples are written directly
 # into the host-mounted /data/libreqos path (no docker cp needed).
-docker compose exec "$runner_service" sh -lc "mkdir -p '$container_run_dir' && /usr/local/bin/libreqos-test --no-tui --json --export-samples '$container_run_dir/samples.json'" \
+docker compose exec "$runner_service" sh -lc "mkdir -p '$container_run_dir' && /usr/local/bin/libreqos-test $cli_tui_flag --json --export-samples '$container_run_dir/samples.json'" \
   | tee "$cli_output_txt"
 
 if [ ! -s "$samples_json" ]; then
