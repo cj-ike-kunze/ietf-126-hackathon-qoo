@@ -150,6 +150,42 @@ Browser setting for local WebRTC reliability (host receiver + container sender):
 
 Note: Deterministic default source can be prepared from `.yuv` input with ffmpeg.
 
+### 7. Reuse one video for WebRTC and goDASH (fast path)
+
+Use this helper to turn a reference video into DASH assets and install them
+into the running `target` container:
+
+```sh
+./scripts/use-shared-video.sh
+```
+
+Optional second arg sets output duration in seconds (default `120`):
+
+```sh
+./scripts/use-shared-video.sh browser/reference/FourPeople_lossless.mkv 120
+```
+
+Default input is:
+
+- `browser/reference/FourPeople_lossless.mkv`
+
+What it does:
+
+1. Builds a multi-representation DASH set under `data/shared-dash/current/`
+2. Applies `target/dash-fixup.py` to the generated `manifest.mpd`
+3. Copies files into `target:/var/www/dash`
+
+After that:
+
+- `./scripts/run-godash.sh tcp|quic` uses the same clip content via `/dash/manifest.mpd`
+- WebRTC sender can pick the same file from the reference file dropdown
+
+Use a different clip later:
+
+```sh
+./scripts/use-shared-video.sh browser/reference/<your-video>.mkv [loop-seconds]
+```
+
 When done:
 
 ```sh
