@@ -79,6 +79,30 @@ case "$PROTOCOL" in
     quic) URL="https://$TARGET_HOST:$TARGET_PORT/dash/manifest.mpd" ;;
 esac
 
+# Preflight check: fail early with a clear fix when requested streamDuration is
+# longer than what the current MPD can provide.
+MPD_DURATION_ISO="$(curl -fsS "$URL" 2>/dev/null | sed -n 's/.*mediaPresentationDuration="\([^"]*\)".*/\1/p' | head -n 1 || true)"
+if [ -n "$MPD_DURATION_ISO" ]; then
+    MPD_DURATION_SECS="$(printf '%s\n' "$MPD_DURATION_ISO" | awk '
+        {
+            d=$0
+            sub(/^PT/, "", d)
+            h=0; m=0; s=0
+            if (match(d, /[0-9]+H/)) { h=substr(d, RSTART, RLENGTH-1) + 0 }
+            if (match(d, /[0-9]+M/)) { m=substr(d, RSTART, RLENGTH-1) + 0 }
+            if (match(d, /[0-9]+(\.[0-9]+)?S/)) { s=substr(d, RSTART, RLENGTH-1) + 0 }
+            print int((h * 3600) + (m * 60) + s)
+        }
+    ' || true)"
+
+    if [ -n "$MPD_DURATION_SECS" ] && [ "$MPD_DURATION_SECS" -gt 0 ] && [ "$STREAM_DURATION" -gt "$MPD_DURATION_SECS" ]; then
+        echo "*** requested streamDuration=${STREAM_DURATION}s exceeds MPD duration=${MPD_DURATION_SECS}s at $URL ***" >&2
+        echo "*** fix: rerun with a shorter duration, e.g. ./scripts/run-godash.sh $PROTOCOL $TARGET_HOST $TARGET_PORT $MPD_DURATION_SECS ***" >&2
+        echo "*** or regenerate longer shared DASH: ./scripts/use-shared-video.sh browser/reference/FourPeople_lossless.mkv 120 ***" >&2
+        exit 3
+    fi
+fi
+
 # Distinct output folder per run. The directory is created when
 # -outputFolder/-config is set.
 #
